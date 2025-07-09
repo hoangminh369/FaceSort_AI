@@ -1,63 +1,24 @@
 <template>
   <div class="admin-dashboard">
-    <div class="dashboard-header">
+    <div class="dashboard-header fade-in-down">
       <h1>Admin Dashboard</h1>
       <p>System Overview and Management</p>
     </div>
     
     <!-- Statistics Cards -->
     <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
-        <el-card class="stat-card">
+      <el-col :span="6" v-for="(stat, index) in statCards" :key="stat.label">
+        <el-card 
+          class="stat-card animate-card" 
+          :style="{ animationDelay: `${index * 0.1}s` }"
+        >
           <div class="stat-content">
-            <div class="stat-icon user-icon">
-              <el-icon size="24"><User /></el-icon>
+            <div class="stat-icon" :class="stat.iconClass">
+              <el-icon size="24"><component :is="stat.icon" /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-number">{{ stats.totalUsers }}</div>
-              <div class="stat-label">Total Users</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon image-icon">
-              <el-icon size="24"><Picture /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ stats.totalImages }}</div>
-              <div class="stat-label">Total Images</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon processed-icon">
-              <el-icon size="24"><Check /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ stats.totalProcessed }}</div>
-              <div class="stat-label">Processed</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon face-icon">
-              <el-icon size="24"><View /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ stats.totalFacesDetected }}</div>
-              <div class="stat-label">Faces Detected</div>
+              <div class="stat-number">{{ stats[stat.key] }}</div>
+              <div class="stat-label">{{ stat.label }}</div>
             </div>
           </div>
         </el-card>
@@ -65,100 +26,72 @@
     </el-row>
     
     <!-- Quick Actions -->
-    <el-card class="actions-card" header="Quick Actions">
+    <el-card class="actions-card animate-up" header="Quick Actions">
       <el-row :gutter="16">
-        <el-col :span="6">
+        <el-col :span="6" v-for="(action, index) in quickActions" :key="action.label">
           <el-button
-            type="primary"
+            :type="action.type"
             size="large"
-            @click="handleScanDrive"
-            :loading="scanning"
-            class="action-button"
+            @click="action.handler"
+            :loading="action.loading"
+            class="action-button pulse-on-hover"
+            :style="{ animationDelay: `${0.2 + index * 0.1}s` }"
           >
-            <el-icon><FolderOpened /></el-icon>
-            Scan Google Drive
-          </el-button>
-        </el-col>
-        
-        <el-col :span="6">
-          <el-button
-            type="success"
-            size="large"
-            @click="handleProcessImages"
-            :loading="processing"
-            class="action-button"
-          >
-            <el-icon><Setting /></el-icon>
-            Process Images
-          </el-button>
-        </el-col>
-        
-        <el-col :span="6">
-          <el-button
-            type="info"
-            size="large"
-            @click="$router.push('/admin/workflows')"
-            class="action-button"
-          >
-            <el-icon><Tools /></el-icon>
-            Manage Workflows
-          </el-button>
-        </el-col>
-        
-        <el-col :span="6">
-          <el-button
-            type="warning"
-            size="large"
-            @click="$router.push('/admin/users')"
-            class="action-button"
-          >
-            <el-icon><UserFilled /></el-icon>
-            Manage Users
+            <el-icon><component :is="action.icon" /></el-icon>
+            {{ action.label }}
           </el-button>
         </el-col>
       </el-row>
     </el-card>
     
     <!-- Recent Activity -->
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="activity-row">
       <el-col :span="12">
-        <el-card header="Recent Workflows">
-          <el-table :data="recentWorkflows" style="width: 100%">
-            <el-table-column prop="name" label="Workflow" />
-            <el-table-column prop="status" label="Status">
+        <el-card class="animate-up" header="Recent Workflows" :style="{ animationDelay: '0.4s' }">
+          <el-table :data="recentWorkflows" style="width: 100%" :show-header="false" class="hover-table">
+            <el-table-column prop="name" label="Workflow">
               <template #default="{ row }">
-                <el-tag
-                  :type="getStatusType(row.status)"
-                  size="small"
-                >
-                  {{ row.status }}
-                </el-tag>
+                <div class="workflow-item">
+                  <span class="workflow-name">{{ row.name }}</span>
+                  <el-tag
+                    :type="getStatusType(row.status)"
+                    size="small"
+                    effect="light"
+                  >
+                    {{ row.status }}
+                  </el-tag>
+                </div>
+                <div class="workflow-time">{{ row.lastRun }}</div>
               </template>
             </el-table-column>
-            <el-table-column prop="lastRun" label="Last Run" />
           </el-table>
+          <div class="view-all-link">
+            <el-button text type="primary" @click="$router.push('/admin/workflows')">
+              View all workflows
+              <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+            </el-button>
+          </div>
         </el-card>
       </el-col>
       
       <el-col :span="12">
-        <el-card header="System Status">
+        <el-card class="animate-up" header="System Status" :style="{ animationDelay: '0.5s' }">
           <div class="system-status">
-            <div class="status-item">
-              <span class="status-label">Google Drive:</span>
-              <el-tag type="success" size="small">Connected</el-tag>
+            <div v-for="(status, index) in systemStatuses" :key="index" class="status-item" :class="{'status-active': status.active}">
+              <span class="status-label">{{ status.label }}:</span>
+              <el-tag :type="status.type" size="small" effect="light">{{ status.value }}</el-tag>
             </div>
-            <div class="status-item">
-              <span class="status-label">DeepFace API:</span>
-              <el-tag type="success" size="small">Online</el-tag>
-            </div>
-            <div class="status-item">
-              <span class="status-label">Chatbot (Zalo):</span>
-              <el-tag type="warning" size="small">Configuring</el-tag>
-            </div>
-            <div class="status-item">
-              <span class="status-label">Storage Used:</span>
+          </div>
+          <div class="storage-progress">
+            <div class="storage-header">
+              <span>Storage Used:</span>
               <span class="storage-info">{{ formatBytes(stats.storageUsed) }}</span>
             </div>
+            <el-progress 
+              :percentage="storagePercentage" 
+              :stroke-width="10"
+              :color="storageProgressColor" 
+            ></el-progress>
           </div>
         </el-card>
       </el-col>
@@ -167,9 +100,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { systemApi, driveApi, imageApi } from '@/services/api'
+import { systemApi, driveApi, imageApi, workflowApi } from '@/services/api'
 import type { SystemStats, Workflow } from '@/types'
 
 const stats = ref<SystemStats>({
@@ -184,27 +117,79 @@ const recentWorkflows = ref<Workflow[]>([])
 const scanning = ref(false)
 const processing = ref(false)
 
+const statCards = [
+  { key: 'totalUsers', label: 'Total Users', icon: 'User', iconClass: 'user-icon' },
+  { key: 'totalImages', label: 'Total Images', icon: 'Picture', iconClass: 'image-icon' },
+  { key: 'totalProcessed', label: 'Processed', icon: 'Check', iconClass: 'processed-icon' },
+  { key: 'totalFacesDetected', label: 'Faces Detected', icon: 'View', iconClass: 'face-icon' }
+]
+
+const quickActions = computed(() => [
+  { 
+    label: 'Scan Google Drive', 
+    type: 'primary', 
+    icon: 'FolderOpened', 
+    loading: scanning.value,
+    handler: handleScanDrive 
+  },
+  { 
+    label: 'Process Images', 
+    type: 'success', 
+    icon: 'Setting', 
+    loading: processing.value,
+    handler: handleProcessImages 
+  },
+  { 
+    label: 'Manage Workflows', 
+    type: 'info', 
+    icon: 'Tools', 
+    loading: false,
+    handler: () => { $router.push('/admin/workflows') } 
+  },
+  { 
+    label: 'Manage Users', 
+    type: 'warning', 
+    icon: 'UserFilled', 
+    loading: false,
+    handler: () => { $router.push('/admin/users') } 
+  }
+])
+
+const systemStatuses = ref([
+  { label: 'Google Drive', value: 'Connected', type: 'success', active: true },
+  { label: 'DeepFace API', value: 'Online', type: 'success', active: true },
+  { label: 'Chatbot (Zalo)', value: 'Configuring', type: 'warning', active: false }
+])
+
+// Calculate storage percentage (for demo, assuming 10GB total)
+const storagePercentage = computed(() => {
+  const totalStorage = 10 * 1024 * 1024 * 1024; // 10GB in bytes
+  return Math.min(100, Math.round((stats.value.storageUsed / totalStorage) * 100));
+})
+
+// Dynamic color based on storage usage
+const storageProgressColor = computed(() => {
+  if (storagePercentage.value < 50) return '#67C23A';
+  if (storagePercentage.value < 80) return '#E6A23C';
+  return '#F56C6C';
+})
+
 const loadDashboardData = async () => {
   try {
     const statsData = await systemApi.getSystemStats()
     stats.value = statsData
-    
-    // Mock recent workflows for demo
-    recentWorkflows.value = [
-      { id: '1', name: 'Drive Scanner', status: 'active', lastRun: '2 hours ago', type: 'scan_drive', description: '', config: {} },
-      { id: '2', name: 'Face Detection', status: 'completed', lastRun: '30 minutes ago', type: 'process_images', description: '', config: {} },
-      { id: '3', name: 'Photo Selection', status: 'running', lastRun: '5 minutes ago', type: 'process_images', description: '', config: {} }
-    ]
+
+    const workflows = await workflowApi.getWorkflows()
+    // Sort by updatedAt/ lastRun if present and take latest 5
+    recentWorkflows.value = workflows
+      .sort((a: any, b: any) => {
+        const dateA = new Date(a.updatedAt || a.lastRun || a.createdAt || 0).getTime()
+        const dateB = new Date(b.updatedAt || b.lastRun || b.createdAt || 0).getTime()
+        return dateB - dateA
+      })
+      .slice(0, 5)
   } catch (error) {
     console.error('Failed to load dashboard data:', error)
-    // Use demo data if API fails
-    stats.value = {
-      totalUsers: 15,
-      totalImages: 1247,
-      totalProcessed: 892,
-      totalFacesDetected: 2341,
-      storageUsed: 2147483648 // 2GB in bytes
-    }
   }
 }
 
@@ -212,13 +197,21 @@ const handleScanDrive = async () => {
   scanning.value = true
   try {
     await driveApi.scanDrive()
-    ElMessage.success('Google Drive scan started successfully')
+    ElMessage({
+      message: 'Google Drive scan started successfully',
+      type: 'success',
+      duration: 3000
+    })
     // Refresh data after scan
     setTimeout(() => {
       loadDashboardData()
     }, 2000)
   } catch (error: any) {
-    ElMessage.error(error.message || 'Failed to start drive scan')
+    ElMessage({
+      message: error.message || 'Failed to start drive scan',
+      type: 'error',
+      duration: 5000
+    })
   } finally {
     scanning.value = false
   }
@@ -228,13 +221,21 @@ const handleProcessImages = async () => {
   processing.value = true
   try {
     await imageApi.processImages()
-    ElMessage.success('Image processing started successfully')
+    ElMessage({
+      message: 'Image processing started successfully',
+      type: 'success',
+      duration: 3000
+    })
     // Refresh data after processing
     setTimeout(() => {
       loadDashboardData()
     }, 2000)
   } catch (error: any) {
-    ElMessage.error(error.message || 'Failed to start image processing')
+    ElMessage({
+      message: error.message || 'Failed to start image processing',
+      type: 'error',
+      duration: 5000
+    })
   } finally {
     processing.value = false
   }
@@ -265,20 +266,64 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+@keyframes statusPulse {
+  0% { box-shadow: 0 0 0 0 rgba(103, 194, 58, 0.4); }
+  70% { box-shadow: 0 0 0 5px rgba(103, 194, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(103, 194, 58, 0); }
+}
+
 .admin-dashboard {
   max-width: 1200px;
   margin: 0 auto;
+  padding: 20px;
+  opacity: 0;
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
 .dashboard-header {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  animation: fadeInDown 0.5s ease-out forwards;
 }
 
 .dashboard-header h1 {
   margin: 0 0 8px 0;
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 600;
   color: #333;
+  letter-spacing: -0.5px;
 }
 
 .dashboard-header p {
@@ -288,13 +333,36 @@ onMounted(() => {
 }
 
 .stats-row {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+}
+
+.animate-card {
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out forwards;
+  transition: all 0.3s ease;
+}
+
+.animate-up {
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out forwards;
+  transition: all 0.3s ease;
+}
+
+.fade-in-down {
+  animation: fadeInDown 0.5s ease-out forwards;
 }
 
 .stat-card {
-  border-radius: 8px;
+  border-radius: 12px;
   border: none;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
 .stat-content {
@@ -304,27 +372,32 @@ onMounted(() => {
 }
 
 .stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 8px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  transition: all 0.3s ease;
 }
 
-.user-icon { background: #409EFF; }
-.image-icon { background: #67C23A; }
-.processed-icon { background: #E6A23C; }
-.face-icon { background: #F56C6C; }
+.stat-card:hover .stat-icon {
+  transform: scale(1.05);
+}
+
+.user-icon { background: linear-gradient(135deg, #409EFF, #2980b9); }
+.image-icon { background: linear-gradient(135deg, #67C23A, #27ae60); }
+.processed-icon { background: linear-gradient(135deg, #E6A23C, #d35400); }
+.face-icon { background: linear-gradient(135deg, #F56C6C, #c0392b); }
 
 .stat-info {
   flex: 1;
 }
 
 .stat-number {
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 700;
   color: #333;
   line-height: 1;
 }
@@ -336,29 +409,86 @@ onMounted(() => {
 }
 
 .actions-card {
-  margin-bottom: 24px;
-  border-radius: 8px;
+  margin-bottom: 32px;
+  border-radius: 12px;
   border: none;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .action-button {
   width: 100%;
-  height: 60px;
+  height: 64px;
   font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.pulse-on-hover:hover {
+  animation: pulse 0.5s infinite;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.activity-row {
+  margin-bottom: 24px;
+}
+
+.workflow-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workflow-name {
   font-weight: 500;
 }
 
+.workflow-time {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.hover-table :deep(.el-table__row) {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hover-table :deep(.el-table__row:hover) {
+  background-color: #f5f7fa;
+  transform: translateX(5px);
+}
+
 .system-status {
-  space-y: 12px;
+  margin-bottom: 24px;
 }
 
 .status-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+  transition: all 0.3s ease;
+}
+
+.status-active {
+  position: relative;
+}
+
+.status-active::before {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #67C23A;
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  animation: statusPulse 2s infinite;
 }
 
 .status-item:last-child {
@@ -375,8 +505,66 @@ onMounted(() => {
   font-weight: 500;
 }
 
+.storage-progress {
+  padding: 12px 0;
+}
+
+.storage-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.view-all-link {
+  text-align: center;
+  margin-top: 16px;
+}
+
 :deep(.el-card__header) {
   font-weight: 600;
   color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 20px;
+}
+
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-button.is-text) {
+  border-radius: 6px;
+  padding: 6px 12px;
+  transition: all 0.3s ease;
+}
+
+:deep(.el-button.is-text:hover) {
+  background: rgba(64, 158, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+:deep(.el-progress-bar__inner) {
+  transition: all 0.8s ease;
+}
+
+@media (max-width: 768px) {
+  .stats-row .el-col,
+  .actions-card .el-col {
+    width: 50%;
+    margin-bottom: 16px;
+  }
+  
+  .activity-row .el-col {
+    width: 100%;
+    margin-bottom: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-row .el-col,
+  .actions-card .el-col {
+    width: 100%;
+  }
 }
 </style> 

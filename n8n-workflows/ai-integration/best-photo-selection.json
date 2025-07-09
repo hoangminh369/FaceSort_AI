@@ -1,0 +1,265 @@
+{
+  "name": "Best Photo Selection",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/api/select-best-photos",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "best-photo-selection"
+    },
+    {
+      "parameters": {},
+      "name": "When clicking \"Execute Workflow\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get image data from input or request body\nlet images = [];\n\nif (Array.isArray($input.first().json.images)) {\n  images = $input.first().json.images;\n} else if (Array.isArray($input.first().json.body?.images)) {\n  images = $input.first().json.body.images;\n} else {\n  return [\n    {\n      json: {\n        success: false,\n        error: 'No images data provided',\n        selectedImages: []\n      }\n    }\n  ];\n}\n\nreturn [\n  {\n    json: {\n      success: true,\n      images,\n      totalImages: images.length\n    }\n  }\n];"
+      },
+      "name": "Extract Images Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.totalImages }}",
+              "operation": "notEqual",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "If Has Images",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        650,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Group images by face characteristics\nconst images = $input.first().json.images || [];\n\n// Group images by face count\nconst groupedByFaceCount = {};\n\nfor (const image of images) {\n  const key = `faces_${image.faceCount || 0}`;\n  \n  if (!groupedByFaceCount[key]) {\n    groupedByFaceCount[key] = [];\n  }\n  \n  groupedByFaceCount[key].push(image);\n}\n\n// Array to store all groups\nconst imageGroups = [];\n\n// Convert to array format for easier processing\nObject.entries(groupedByFaceCount).forEach(([key, groupImages]) => {\n  imageGroups.push({\n    key,\n    faceCount: parseInt(key.split('_')[1]),\n    images: groupImages\n  });\n});\n\nreturn imageGroups.map(group => {\n  return {\n    json: group\n  };\n});"
+      },
+      "name": "Group Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// For empty images array\nreturn [\n  {\n    json: {\n      success: false,\n      message: 'No images to process',\n      selectedImages: []\n    }\n  }\n];"
+      },
+      "name": "Empty Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        850,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Process Each Group",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Select best images from each group based on quality scores\nconst group = $input.first().json;\nconst images = group.images || [];\n\n// Skip groups with no images\nif (!images || images.length === 0) {\n  return [\n    {\n      json: {\n        groupKey: group.key,\n        faceCount: group.faceCount,\n        selectedImages: []\n      }\n    }\n  ];\n}\n\n// Sort images by quality score (descending)\nconst sortedImages = [...images].sort((a, b) => {\n  // Higher quality score is better\n  const qualityDiff = (b.qualityScore || 0) - (a.qualityScore || 0);\n  \n  if (qualityDiff !== 0) {\n    return qualityDiff;\n  }\n  \n  // If quality is the same, check facial expressions (prefer happy faces)\n  if (a.emotions && b.emotions) {\n    const aHappiness = a.emotions.happy || 0;\n    const bHappiness = b.emotions.happy || 0;\n    \n    if (aHappiness !== bHappiness) {\n      return bHappiness - aHappiness;\n    }\n  }\n  \n  // If still equal, prefer less blur\n  if (a.metrics && b.metrics) {\n    const aBlur = a.metrics.blur || 0;\n    const bBlur = b.metrics.blur || 0;\n    \n    return aBlur - bBlur;\n  }\n  \n  return 0;\n});\n\n// Select top images based on group size\nlet selectCount = 1; // Default\n\nif (group.faceCount === 0) {\n  // For images with no faces, select fewer\n  selectCount = Math.min(1, sortedImages.length);\n} else if (group.faceCount === 1) {\n  // For portrait photos, select more\n  selectCount = Math.min(3, sortedImages.length);\n} else if (group.faceCount > 1) {\n  // For group photos, select even more\n  selectCount = Math.min(5, sortedImages.length);\n}\n\nconst selectedImages = sortedImages.slice(0, selectCount);\n\nreturn [\n  {\n    json: {\n      groupKey: group.key,\n      faceCount: group.faceCount,\n      totalImages: images.length,\n      selectedCount: selectedImages.length,\n      selectedImages\n    }\n  }\n];"
+      },
+      "name": "Select Best Photos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "name": "Combine Groups",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all selected photos from all groups\nconst inputItems = $input.all();\nconst emptyResult = inputItems.find(item => item.json.success === false);\n\n// If we got the empty result, return that\nif (emptyResult) {\n  return [emptyResult];\n}\n\n// Collect all selected images from all groups\nlet allSelectedImages = [];\ninputItems.forEach(item => {\n  if (item.json.selectedImages && Array.isArray(item.json.selectedImages)) {\n    allSelectedImages = allSelectedImages.concat(item.json.selectedImages);\n  }\n});\n\nreturn [\n  {\n    json: {\n      success: true,\n      message: `Selected ${allSelectedImages.length} best photos from ${inputItems.length} groups`,\n      groups: inputItems.map(item => {\n        return {\n          key: item.json.groupKey,\n          faceCount: item.json.faceCount,\n          totalImages: item.json.totalImages,\n          selectedCount: item.json.selectedCount\n        };\n      }),\n      selectedImages: allSelectedImages\n    }\n  }\n];"
+      },
+      "name": "Format Final Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Images Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking \"Execute Workflow\"": {
+      "main": [
+        [
+          {
+            "node": "Extract Images Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Images Data": {
+      "main": [
+        [
+          {
+            "node": "If Has Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Images": {
+      "main": [
+        [
+          {
+            "node": "Group Images",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Empty Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Images": {
+      "main": [
+        [
+          {
+            "node": "Process Each Group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empty Result": {
+      "main": [
+        [
+          {
+            "node": "Combine Groups",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Process Each Group": {
+      "main": [
+        [
+          {
+            "node": "Select Best Photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Best Photos": {
+      "main": [
+        [
+          {
+            "node": "Combine Groups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Groups": {
+      "main": [
+        [
+          {
+            "node": "Format Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handling"
+  },
+  "tags": [
+    {
+      "name": "ai-integration"
+    },
+    {
+      "name": "best-photo-selection"
+    }
+  ],
+  "versionId": "1",
+  "id": "best-photo-selection",
+  "meta": {
+    "instanceId": "local-instance"
+  }
+} 
