@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
+import NProgress from 'nprogress'
 import type { 
   LoginRequest, 
   LoginResponse, 
@@ -11,7 +12,8 @@ import type {
   DriveConfig,
   SystemStats,
   ApiResponse,
-  PaginatedResponse
+  PaginatedResponse,
+  Conversation
 } from '@/types'
 
 class ApiClient {
@@ -19,7 +21,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL:  'http://localhost:5678/api',
+      baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json'
@@ -33,9 +35,11 @@ class ApiClient {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`
         }
+        NProgress.start()
         return config
       },
       (error) => {
+        NProgress.done()
         return Promise.reject(error)
       }
     )
@@ -43,9 +47,11 @@ class ApiClient {
     // Response interceptor
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
+        NProgress.done()
         return response.data
       },
       (error) => {
+        NProgress.done()
         if (error.response?.status === 401) {
           localStorage.removeItem('token')
           localStorage.removeItem('userRole')
@@ -164,13 +170,79 @@ class ApiClient {
   }
 
   // Chatbot endpoints
+  async getConversations(): Promise<Conversation[]> {
+    const response = await this.get<Conversation[]>('/chatbot/conversations');
+    return response.data!;
+  }
+
+  async getMessagesByConversation(conversationId: string): Promise<ChatMessage[]> {
+    const response = await this.get<ChatMessage[]>(`/chatbot/conversations/${conversationId}/messages`);
+    return response.data!;
+  }
+
   async getChatMessages(page = 1, limit = 50): Promise<PaginatedResponse<ChatMessage>> {
     const response = await this.get<PaginatedResponse<ChatMessage>>(`/chatbot/messages?page=${page}&limit=${limit}`)
     return response.data!
   }
 
-  async sendChatbotMessage(userId: string, message: string, platform: 'zalo' | 'facebook'): Promise<void> {
-    await this.post('/chatbot/send', { userId, message, platform })
+  async sendChatbotMessage(
+    message: string,
+    platform: 'web' | 'zalo' | 'facebook',
+    conversationId: string | null
+  ): Promise<{ response: string, conversation: Conversation }> {
+    const response = await this.post<{ response: string, conversation: Conversation }>('/chatbot/send', { message, platform, conversationId });
+    return response.data!;
+  }
+
+  // New methods for message and conversation management
+  async updateMessage(messageId: string, newContent: string): Promise<ChatMessage> {
+    const response = await this.put<ChatMessage>(`/chatbot/messages/${messageId}`, { message: newContent });
+    return response.data!;
+  }
+
+  async deleteMessage(messageId: string): Promise<{ success: boolean }> {
+    const response = await this.delete<{ success: boolean }>(`/chatbot/messages/${messageId}`);
+    return response.data!;
+  }
+
+  async updateConversation(conversationId: string, title: string): Promise<Conversation> {
+    const response = await this.put<Conversation>(`/chatbot/conversations/${conversationId}`, { title });
+    return response.data!;
+  }
+
+  async deleteConversation(conversationId: string): Promise<{ success: boolean }> {
+    const response = await this.delete<{ success: boolean }>(`/chatbot/conversations/${conversationId}`);
+    return response.data!;
+  }
+
+  async evaluateImages(imageIds: string[]): Promise<any> {
+    const response = await this.post('/chatbot/evaluate-images', { imageIds })
+    return response
+  }
+
+  async compareImages(sourceImageId: string, targetImageIds: string[]): Promise<any> {
+    const response = await this.post('/chatbot/compare-images', { 
+      sourceImageId, 
+      targetImageIds 
+    })
+    return response
+  }
+
+  async selectBestImages(imageIds: string[], customerName: string, maxImages: number = 5): Promise<any> {
+    const response = await this.post('/chatbot/select-best-images', {
+      imageIds,
+      customerName,
+      maxImages
+    })
+    return response
+  }
+
+  async processDriveImages(customerName: string, folderPath?: string): Promise<any> {
+    const response = await this.post('/chatbot/process-drive-images', {
+      customerName,
+      folderPath
+    })
+    return response
   }
 
   async getChatbotConfig(): Promise<ChatbotConfig> {
@@ -199,20 +271,44 @@ class ApiClient {
     return response.data!
   }
 
+  async listDriveFolders(parentId?: string): Promise<any[]> {
+    const url = parentId ? `/drive/folders?parentId=${parentId}` : '/drive/folders'
+    const response = await this.get<any[]>(url)
+    return response.data!
+  }
+  
+  async listDriveFiles(parentId?: string): Promise<any[]> {
+    const url = parentId ? `/drive/files?parentId=${parentId}` : '/drive/files'
+    const response = await this.get<any[]>(url)
+    return response.data!
+  }
+  
+  async getDriveAuthUrl(): Promise<string> {
+    const response = await this.get<{ authUrl: string }>('/drive/auth-url')
+    return response.data!.authUrl
+  }
+
   // System endpoints
   async getSystemStats(): Promise<SystemStats> {
     const response = await this.get<SystemStats>('/system/stats')
     return response.data!
   }
+
+  async register(data: { username: string; email: string; password: string }) {
+    const response = await this.post('/auth/register', data)
+    return response.data
+  }
 }
 
-const apiClient = new ApiClient()
+// Export a single instance of the API client
+export const apiClient = new ApiClient()
 
-// Export organized API modules
+// You can also export specific parts of the API for easier use
 export const authApi = {
   login: apiClient.login.bind(apiClient),
   logout: apiClient.logout.bind(apiClient),
-  getProfile: apiClient.getProfile.bind(apiClient)
+  getProfile: apiClient.getProfile.bind(apiClient),
+  register: apiClient.register.bind(apiClient),
 }
 
 export const userApi = {
@@ -239,20 +335,32 @@ export const workflowApi = {
 }
 
 export const chatbotApi = {
+  getConversations: apiClient.getConversations.bind(apiClient),
+  getMessagesByConversation: apiClient.getMessagesByConversation.bind(apiClient),
   getChatMessages: apiClient.getChatMessages.bind(apiClient),
   sendChatbotMessage: apiClient.sendChatbotMessage.bind(apiClient),
+  evaluateImages: apiClient.evaluateImages.bind(apiClient),
+  compareImages: apiClient.compareImages.bind(apiClient),
+  selectBestImages: apiClient.selectBestImages.bind(apiClient),
+  processDriveImages: apiClient.processDriveImages.bind(apiClient),
   getChatbotConfig: apiClient.getChatbotConfig.bind(apiClient),
-  updateChatbotConfig: apiClient.updateChatbotConfig.bind(apiClient)
+  updateChatbotConfig: apiClient.updateChatbotConfig.bind(apiClient),
+  // Add new methods
+  updateMessage: apiClient.updateMessage.bind(apiClient),
+  deleteMessage: apiClient.deleteMessage.bind(apiClient),
+  updateConversation: apiClient.updateConversation.bind(apiClient),
+  deleteConversation: apiClient.deleteConversation.bind(apiClient),
 }
 
 export const driveApi = {
   getDriveConfig: apiClient.getDriveConfig.bind(apiClient),
   updateDriveConfig: apiClient.updateDriveConfig.bind(apiClient),
-  scanDrive: apiClient.scanDrive.bind(apiClient)
+  scanDrive: apiClient.scanDrive.bind(apiClient),
+  listDriveFolders: apiClient.listDriveFolders.bind(apiClient),
+  listDriveFiles: apiClient.listDriveFiles.bind(apiClient),
+  getDriveAuthUrl: apiClient.getDriveAuthUrl.bind(apiClient)
 }
 
 export const systemApi = {
   getSystemStats: apiClient.getSystemStats.bind(apiClient)
-}
-
-export default apiClient 
+} 

@@ -2,15 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User } from '@/types'
 
-// Import real API and mock API
+// Import real API
 import { authApi } from '@/services/api'
-import { mockAuthApi } from '@/services/mockApi'
 
-// Check localStorage for mock API preference
-const useMockApi = localStorage.getItem('useMockApi') !== 'false' // Default to mock API if not set
-const api = useMockApi ? mockAuthApi : authApi
+const api = authApi
 
-console.log(`Using ${useMockApi ? 'MOCK' : 'REAL'} API`)
+console.log(`Using REAL API`)
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)

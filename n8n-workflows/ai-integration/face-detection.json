@@ -1,0 +1,235 @@
+{
+  "name": "Face Detection",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/api/detect-faces",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "face-detection"
+    },
+    {
+      "parameters": {},
+      "name": "When clicking \"Execute Workflow\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get image URL from input or request body\nlet imageUrl;\n\nif ($input.first().json.imageUrl) {\n  imageUrl = $input.first().json.imageUrl;\n} else if ($input.first().json.body?.imageUrl) {\n  imageUrl = $input.first().json.body.imageUrl;\n} else {\n  return [\n    {\n      json: {\n        success: false,\n        error: 'No image URL provided'\n      }\n    }\n  ];\n}\n\nreturn [\n  {\n    json: {\n      imageUrl,\n      actions: ['detection']\n    }\n  }\n];"
+      },
+      "name": "Extract Image URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DEEPFACE_API_URL }}/analyze",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "n8n-nodes-base.httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DEEPFACE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"img_url\": \"{{ $json.imageUrl }}\", \"actions\": {{ $json.actions }} }"
+      },
+      "name": "Call DeepFace API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": "true"
+            }
+          ]
+        }
+      },
+      "name": "If Successful",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        850,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process DeepFace API response\nconst response = $input.first().json;\n\nconst faces = response.faces || [];\nconst faceCount = faces.length;\n\n// Format faces data for easier use\nconst processedFaces = faces.map((face, index) => {\n  return {\n    index,\n    box: {\n      left: face.box.left,\n      top: face.box.top,\n      width: face.box.width,\n      height: face.box.height\n    },\n    confidence: face.confidence,\n    hasFace: true\n  };\n});\n\nreturn [\n  {\n    json: {\n      success: true,\n      imageUrl: $input.first().json.imageUrl,\n      faceCount,\n      faces: processedFaces\n    }\n  }\n];"
+      },
+      "name": "Process Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle error in face detection\nreturn [\n  {\n    json: {\n      success: false,\n      imageUrl: $input.first().json.imageUrl,\n      error: $input.first().json.error || 'Face detection failed',\n      faceCount: 0,\n      faces: []\n    }\n  }\n];"
+      },
+      "name": "Handle Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "resumeOnFail": true,
+        "options": {}
+      },
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking \"Execute Workflow\"": {
+      "main": [
+        [
+          {
+            "node": "Extract Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Image URL": {
+      "main": [
+        [
+          {
+            "node": "Call DeepFace API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call DeepFace API": {
+      "main": [
+        [
+          {
+            "node": "If Successful",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Successful": {
+      "main": [
+        [
+          {
+            "node": "Process Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Results": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Error": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handling"
+  },
+  "tags": [
+    {
+      "name": "ai-integration"
+    },
+    {
+      "name": "face-detection"
+    }
+  ],
+  "versionId": "1",
+  "id": "face-detection",
+  "meta": {
+    "instanceId": "local-instance"
+  }
+} 

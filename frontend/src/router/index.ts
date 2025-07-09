@@ -7,6 +7,7 @@ import UserLayout from '@/layouts/UserLayout.vue'
 
 // Pages
 import LoginPage from '@/pages/LoginPage.vue'
+import RegisterPage from '@/pages/RegisterPage.vue'
 import AdminDashboard from '@/pages/admin/AdminDashboard.vue'
 import UserManagement from '@/pages/admin/UserManagement.vue'
 import WorkflowManagement from '@/pages/admin/WorkflowManagement.vue'
@@ -14,6 +15,7 @@ import SystemConfig from '@/pages/admin/SystemConfig.vue'
 import UserDashboard from '@/pages/user/UserDashboard.vue'
 import ImageGallery from '@/pages/user/ImageGallery.vue'
 import ChatbotInterface from '@/pages/user/ChatbotInterface.vue'
+import DriveExplorer from '@/pages/admin/DriveExplorer.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -24,6 +26,11 @@ const routes: RouteRecordRaw[] = [
     path: '/login',
     name: 'Login',
     component: LoginPage
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: RegisterPage
   },
   {
     path: '/admin',
@@ -53,6 +60,11 @@ const routes: RouteRecordRaw[] = [
         path: 'config',
         name: 'SystemConfig',
         component: SystemConfig
+      },
+      {
+        path: 'drive',
+        name: 'DriveExplorer',
+        component: DriveExplorer
       }
     ]
   },

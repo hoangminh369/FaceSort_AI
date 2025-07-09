@@ -1,0 +1,491 @@
+{
+  "name": "Message Processing",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When clicking \"Execute Workflow\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process incoming message from chatbot\nconst messageData = $input.first().json;\n\n// If no message data, return error\nif (!messageData || (!messageData.message && !messageData.userId)) {\n  return [\n    {\n      json: {\n        success: false,\n        error: 'Invalid message data',\n        responseMessage: 'Sorry, I could not process your message.'\n      }\n    }\n  ];\n}\n\n// Normalize the input data\nconst userId = messageData.userId || messageData.senderId || 'unknown';\nconst message = messageData.message || '';\nconst platform = messageData.platform || 'unknown';\nlet messageType = messageData.messageType || messageData.type || 'text';\n\n// For non-text messages, return a simple acknowledgment\nif (messageType !== 'text') {\n  return [\n    {\n      json: {\n        success: true,\n        userId: userId,\n        platform: platform,\n        responseMessage: `Thanks for sending a ${messageType}. I've received it.`\n      }\n    }\n  ];\n}\n\nreturn [\n  {\n    json: {\n      userId: userId,\n      message: message,\n      platform: platform,\n      messageType: messageType,\n      timestamp: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check command patterns in the message\nconst messageData = $input.first().json;\nconst message = messageData.message.toLowerCase().trim();\n\n// Define command patterns\nconst commandPatterns = [\n  { pattern: /^help|^hướng dẫn|^trợ giúp/, command: 'help' },\n  { pattern: /^ảnh đẹp|^best photos|^show best/, command: 'show_best' },\n  { pattern: /^xử lý ảnh|^process images|^process photos/, command: 'process' },\n  { pattern: /^tình trạng|^status/, command: 'status' },\n  { pattern: /^quét ảnh|^scan photos|^scan drive/, command: 'scan' },\n  { pattern: /^chào|^hi|^hello|^hey/, command: 'greeting' }\n];\n\n// Find matching command\nlet matchedCommand = 'unknown';\nfor (const cmd of commandPatterns) {\n  if (cmd.pattern.test(message)) {\n    matchedCommand = cmd.command;\n    break;\n  }\n}\n\n// Return with the identified command\nreturn [\n  {\n    json: {\n      ...messageData,\n      command: matchedCommand,\n      originalMessage: message\n    }\n  }\n];"
+      },
+      "name": "Identify Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.command }}",
+              "value2": "help"
+            }
+          ]
+        }
+      },
+      "name": "Switch on Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Help command response\nconst messageData = $input.first().json;\n\nconst helpMessage = `🤖 *Hệ Thống Quản Lý Ảnh Thông Minh* 🤖\\n\\nCác lệnh bạn có thể sử dụng:\\n\\n• *Ảnh đẹp* - Xem các ảnh đẹp nhất đã được chọn\\n• *Xử lý ảnh* - Tiến hành xử lý ảnh\\n• *Tình trạng* - Xem thông tin về hệ thống\\n• *Quét ảnh* - Quét Google Drive để tìm ảnh mới\\n• *Trợ giúp* - Hiển thị hướng dẫn này`;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: helpMessage\n    }\n  }\n];"
+      },
+      "name": "Help Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Show Best Photos command\nconst messageData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: \"Đang tìm những ảnh đẹp nhất cho bạn. Vui lòng đợi trong giây lát...\"\n    }\n  }\n];"
+      },
+      "name": "Show Best Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "=image-selection"
+      },
+      "name": "Execute Image Selection",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Images command\nconst messageData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: \"Đang xử lý ảnh. Bạn sẽ nhận thông báo khi quá trình hoàn tất.\"\n    }\n  }\n];"
+      },
+      "name": "Process Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "=deepface-processing"
+      },
+      "name": "Execute Processing",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Status command\nconst messageData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: \"Đang tải thông tin trạng thái hệ thống...\"\n    }\n  }\n];"
+      },
+      "name": "Status Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:5678/api/system/stats",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Get System Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1250,
+        500
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format system stats response\nconst messageData = $input.first().json;\nconst statsResponse = $input.last().json;\n\nlet responseMessage;\n\nif (statsResponse && statsResponse.data) {\n  const stats = statsResponse.data;\n  \n  const bytesToMB = (bytes) => {\n    return Math.round(bytes / (1024 * 1024) * 10) / 10;\n  };\n  \n  responseMessage = `📊 *Thông tin hệ thống*\\n\\n`;\n  responseMessage += `• Tổng số ảnh: ${stats.totalImages || 0}\\n`;\n  responseMessage += `• Ảnh đã xử lý: ${stats.totalProcessed || 0}\\n`;\n  responseMessage += `• Khuôn mặt phát hiện: ${stats.totalFacesDetected || 0}\\n`;\n  responseMessage += `• Dung lượng đã dùng: ${bytesToMB(stats.storageUsed || 0)} MB\\n`;\n  \n  if (stats.lastProcessingTime) {\n    responseMessage += `• Xử lý lần cuối: ${stats.lastProcessingTime}\\n`;\n  }\n} else {\n  responseMessage = \"Không thể tải thông tin trạng thái hệ thống. Vui lòng thử lại sau.\";\n}\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: responseMessage\n    }\n  }\n];"
+      },
+      "name": "Format Stats Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Scan command\nconst messageData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: \"Đang quét Google Drive để tìm ảnh mới. Bạn sẽ nhận thông báo khi quá trình hoàn tất.\"\n    }\n  }\n];"
+      },
+      "name": "Scan Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "=google-drive-scanner"
+      },
+      "name": "Execute Drive Scan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Greeting command\nconst messageData = $input.first().json;\n\n// Get time of day for greeting\nconst hour = new Date().getHours();\nlet greeting = \"Xin chào\";\n\nif (hour < 12) {\n  greeting = \"Chào buổi sáng\";\n} else if (hour < 18) {\n  greeting = \"Chào buổi chiều\";\n} else {\n  greeting = \"Chào buổi tối\";\n}\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: `${greeting}! Tôi là trợ lý quản lý ảnh thông minh. Bạn có thể gõ \"trợ giúp\" để xem danh sách các lệnh tôi hỗ trợ.`\n    }\n  }\n];"
+      },
+      "name": "Greeting Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unknown command\nconst messageData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      userId: messageData.userId,\n      platform: messageData.platform,\n      responseMessage: \"Xin lỗi, tôi không hiểu yêu cầu của bạn. Hãy gõ 'trợ giúp' để xem danh sách các lệnh tôi hỗ trợ.\"\n    }\n  }\n];"
+      },
+      "name": "Unknown Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "resumeOnFail": true,
+        "options": {}
+      },
+      "name": "Combine Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking \"Execute Workflow\"": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Identify Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify Command": {
+      "main": [
+        [
+          {
+            "node": "Switch on Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch on Command": {
+      "main": [
+        [
+          {
+            "node": "Help Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show Best Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scan Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Greeting Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "output": [
+        [
+          "help"
+        ],
+        [
+          "show_best"
+        ],
+        [
+          "process"
+        ],
+        [
+          "status"
+        ],
+        [
+          "scan"
+        ],
+        [
+          "greeting"
+        ],
+        [
+          "unknown"
+        ]
+      ]
+    },
+    "Help Command": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show Best Command": {
+      "main": [
+        [
+          {
+            "node": "Execute Image Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Image Selection": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Process Command": {
+      "main": [
+        [
+          {
+            "node": "Execute Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Processing": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Status Command": {
+      "main": [
+        [
+          {
+            "node": "Get System Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get System Stats": {
+      "main": [
+        [
+          {
+            "node": "Format Stats Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Stats Response": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Scan Command": {
+      "main": [
+        [
+          {
+            "node": "Execute Drive Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Drive Scan": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Greeting Command": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Unknown Command": {
+      "main": [
+        [
+          {
+            "node": "Combine Responses",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "anyWorkflow",
+    "errorWorkflow": "error-handling"
+  },
+  "tags": [
+    {
+      "name": "chatbot-integration"
+    },
+    {
+      "name": "message-processing"
+    }
+  ],
+  "versionId": "1",
+  "id": "message-processing",
+  "meta": {
+    "instanceId": "local-instance"
+  }
+} 

@@ -84,8 +84,10 @@ export interface ChatMessage {
   userId: string
   message: string
   response?: string
-  platform: 'zalo' | 'facebook'
+  platform: 'web' | 'zalo' | 'facebook'
   type: 'text' | 'image' | 'notification'
+  imageUrl?: string
+  folderLink?: string
   createdAt: string
 }
 
@@ -140,10 +142,18 @@ export interface PaginatedResponse<T> {
 
 // System types
 export interface SystemStats {
-  totalUsers: number
-  totalImages: number
-  totalProcessed: number
-  totalFacesDetected: number
-  storageUsed: number
-  lastProcessingTime?: string
+  users: number;
+  images: number;
+  workflows: number;
+  executions: number;
+}
+
+export interface Conversation {
+  _id: string;
+  userId: string;
+  title: string;
+  lastMessage?: string;
+  platform: 'web' | 'zalo' | 'facebook';
+  createdAt: string;
+  updatedAt: string;
 } 

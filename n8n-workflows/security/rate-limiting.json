@@ -1,0 +1,275 @@
+{
+  "name": "Rate Limiting",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "/api/rate-limiter",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "rate-limiter-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract client info\nconst request = $input.first().json;\nconst ip = request.headers['x-forwarded-for'] || request.ip || 'unknown';\nconst userAgent = request.headers['user-agent'] || 'unknown';\nconst path = request.path || request.url || 'unknown';\nconst method = request.method || 'GET';\nconst clientId = request.headers['x-client-id'] || 'anonymous';\nconst token = request.headers['authorization'] || '';\n\nconst requestKey = `${ip}:${path}:${method}`;\n\n// Create rate limit info\nreturn [\n  {\n    json: {\n      timestamp: new Date().toISOString(),\n      ip,\n      userAgent,\n      path,\n      method,\n      clientId,\n      hasAuthToken: !!token,\n      requestKey\n    }\n  }\n];"
+      },
+      "name": "Extract Client Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:5678/api/rate-limiter/check?key={{ $json.requestKey }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "Check Rate Limit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.data?.allowed ?? true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Allowed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5678/api/rate-limiter/increment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"key\": \"{{ $json.requestKey }}\",\n  \"clientId\": \"{{ $json.clientId }}\",\n  \"ip\": \"{{ $json.ip }}\",\n  \"path\": \"{{ $json.path }}\"\n}"
+      },
+      "name": "Increment Counter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return success response\nconst requestData = $input.first().json;\nconst limitData = $input.last().json;\n\nreturn [\n  {\n    json: {\n      allowed: true,\n      requestKey: requestData.requestKey,\n      requestsRemaining: limitData.data?.remaining || 'unknown',\n      resetAt: limitData.data?.resetAt || 'unknown'\n    }\n  }\n];"
+      },
+      "name": "Allow Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "=## Rate Limit Exceeded\n\nYour request rate has been limited due to exceeding the maximum allowed requests.\n\n**Request Details:**\n- Path: {{ $json.path }}\n- Method: {{ $json.method }}\n- Client ID: {{ $json.clientId }}\n- IP: {{ $json.ip }}\n\n**Rate Limit Info:**\n- Limit: {{ $json.data?.limit || 'unknown' }}\n- Current: {{ $json.data?.current || 'unknown' }}\n- Reset At: {{ $json.data?.resetAt || 'unknown' }}\n\nPlease try again later.",
+        "options": {}
+      },
+      "name": "Format Rate Limit Error",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return rate limit exceeded response\nconst requestData = $input.first().json;\nconst limitMessage = $input.last().json;\n\nreturn [\n  {\n    json: {\n      allowed: false,\n      message: \"Rate limit exceeded\",\n      details: limitMessage,\n      statusCode: 429,\n      headers: {\n        \"Retry-After\": \"60\",\n        \"X-RateLimit-Limit\": requestData.data?.limit || 100,\n        \"X-RateLimit-Remaining\": 0,\n        \"X-RateLimit-Reset\": requestData.data?.resetAt || (Math.floor(Date.now() / 1000) + 60)\n      }\n    }\n  }\n];"
+      },
+      "name": "Rate Limit Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5678/api/system/logs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"level\": \"warn\",\n  \"message\": \"Rate limit exceeded for {{ $json.clientId }} ({{ $json.ip }})\",\n  \"details\": {\n    \"clientId\": \"{{ $json.clientId }}\",\n    \"ip\": \"{{ $json.ip }}\",\n    \"path\": \"{{ $json.path }}\",\n    \"method\": \"{{ $json.method }}\",\n    \"userAgent\": \"{{ $json.userAgent }}\",\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}"
+      },
+      "name": "Log Rate Limit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1450,
+        400
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Client Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Client Info": {
+      "main": [
+        [
+          {
+            "node": "Check Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Is Allowed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Allowed": {
+      "main": [
+        [
+          {
+            "node": "Increment Counter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Rate Limit Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Counter": {
+      "main": [
+        [
+          {
+            "node": "Allow Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Rate Limit Error": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Response": {
+      "main": [
+        [
+          {
+            "node": "Log Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromAnyOwner",
+    "errorWorkflow": "error-handling"
+  },
+  "tags": [
+    {
+      "name": "security"
+    },
+    {
+      "name": "rate-limiting"
+    }
+  ],
+  "versionId": "1",
+  "id": "rate-limiting",
+  "meta": {
+    "instanceId": "local-instance"
+  }
+} 
