@@ -8,12 +8,22 @@ Hệ thống quản lý ảnh thông minh tích hợp AI nhận diện khuôn m�
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Vue.js FE     │◄──►│   n8n Backend   │◄──►│  External APIs  │
+│   Vue.js FE     │◄──►│   Backend API   │◄──►│  n8n Workflows  │
 │                 │    │                 │    │                 │
-│ • Admin Panel   │    │ • Workflows     │    │ • Google Drive  │
-│ • User Dashboard│    │ • AI Processing │    │ • DeepFace API  │
-│ • Image Gallery │    │ • Chatbot Logic │    │ • Zalo/FB Bot   │
+│ • Admin Panel   │    │ • Auth API      │    │ • Core Workflows│
+│ • User Dashboard│    │ • Image API     │    │ • AI Processing │
+│ • Image Gallery │    │ • Drive API     │    │ • Chatbot Logic │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                      ▲
+                                                      │
+                                                      ▼
+                                            ┌─────────────────┐
+                                            │  External APIs  │
+                                            │                 │
+                                            │ • Google Drive  │
+                                            │ • DeepFace API  │
+                                            │ • Zalo/FB Bot   │
+                                            └─────────────────┘
 ```
 
 ### 👥 Tác Nhân (Actors)
@@ -29,7 +39,8 @@ Hệ thống quản lý ảnh thông minh tích hợp AI nhận diện khuôn m�
 ## 🛠️ Công Nghệ Sử Dụng
 
 - **Frontend**: Vue.js 3 + Composition API + TypeScript
-- **Backend**: n8n Workflow Automation
+- **Backend API**: Node.js + Express + TypeScript + MongoDB
+- **Workflow Engine**: n8n Workflow Automation
 - **AI**: DeepFace cho nhận diện khuôn mặt
 - **Storage**: Google Drive API
 - **Chatbot**: Zalo Official Account, Facebook Messenger
@@ -40,189 +51,219 @@ Hệ thống quản lý ảnh thông minh tích hợp AI nhận diện khuôn m�
 ```
 Gbot/
 ├── frontend/              # Vue.js Frontend
+├── backend/               # Node.js Express API
+│   ├── src/               # TypeScript source code
+│   │   ├── controllers/   # API controllers
+│   │   ├── models/        # MongoDB models
+│   │   ├── routes/        # API routes
+│   │   ├── middleware/    # Middleware functions
+│   │   ├── services/      # Services
+│   │   └── config/        # Configuration
 ├── n8n-workflows/         # n8n Workflow Files
+│   ├── core-workflows/    # Main system workflows
+│   ├── ai-integration/    # AI specific workflows
+│   ├── chatbot-integration/ # Chatbot integration workflows
+│   └── security/          # Security related workflows
 ├── docs/                  # Documentation
 ├── scripts/               # Setup & Utility Scripts
 └── .venv/                 # Python Virtual Environment
 ```
 
-## 🚀 Quick Start
+## 🚀 Hướng Dẫn Cài Đặt & Chạy Dự Án
 
-### 1. Setup Frontend
+### Yêu Cầu Hệ Thống
+- Node.js (v14+)
+- MongoDB (local hoặc Atlas)
+- Python 3.8+ (cho n8n)
+
+### 1. Cài Đặt MongoDB
+- Tải và cài đặt MongoDB từ [trang chính thức](https://www.mongodb.com/try/download/community)
+- Hoặc sử dụng MongoDB Atlas (cloud)
+- Tạo database có tên `smart-photo-management`
+
+### 2. Cài Đặt & Chạy Backend API
 ```bash
-cd frontend
+# Di chuyển vào thư mục backend
+cd Gogi/backend
+
+# Cài đặt dependencies
 npm install
+
+# Tạo file .env với nội dung sau
+echo "PORT=5000
+MONGODB_URI=mongodb://localhost:27017/smart-photo-management
+JWT_SECRET=your_jwt_secret_key_here
+N8N_BASE_URL=http://localhost:5678
+N8N_API_KEY=your_n8n_api_key_here
+GOOGLE_DRIVE_CLIENT_ID=your_google_client_id_here
+GOOGLE_DRIVE_CLIENT_SECRET=your_google_client_secret_here
+UPLOAD_DIR=./uploads" > .env
+
+# Chạy development server
 npm run dev
 ```
 
-### 2. Setup n8n Backend
+Backend API sẽ chạy tại: **http://localhost:5000**
+
+### 3. Cài Đặt & Chạy Frontend
 ```bash
-# Kích hoạt .venv
-.venv\Scripts\activate    # Windows
-source .venv/bin/activate # Linux/Mac
+# Di chuyển vào thư mục frontend
+cd Gogi/frontend
 
-# Install n8n
-pip install n8n
-
-# Start n8n
-n8n start
-```
-
-### 3. Truy cập
-- Frontend: http://localhost:3000
-- n8n Backend: http://localhost:5678
-
-## 📋 TODO LIST - PHASE 1: FRONTEND
-
-### ✅ Setup & Infrastructure
-- [ ] Tạo Vue.js project với TypeScript
-- [ ] Cấu hình routing (Vue Router)
-- [ ] Setup state management (Pinia)
-- [ ] Cài đặt UI framework (Element Plus)
-- [ ] Cấu hình API client (Axios)
-
-### 🎨 UI Components
-- [ ] Layout: Header, Sidebar, Main Content
-- [ ] Login/Authentication pages
-- [ ] Admin Dashboard
-- [ ] User Dashboard
-- [ ] Image Gallery Component
-- [ ] File Upload Component
-- [ ] Chatbot Integration Interface
-
-### 📱 Pages & Features
-- [ ] **Admin Panel**:
-  - [ ] Overview Dashboard
-  - [ ] Workflow Management
-  - [ ] User Management
-  - [ ] System Configuration
-  - [ ] Reports & Analytics
-  
-- [ ] **User Dashboard**:
-  - [ ] Personal Image Gallery
-  - [ ] Upload Interface
-  - [ ] Processing Status
-  - [ ] Chatbot Interface
-
-### 🔌 API Integration
-- [ ] Authentication API endpoints
-- [ ] Image upload/management endpoints
-- [ ] Google Drive integration endpoints
-- [ ] n8n workflow trigger endpoints
-- [ ] Chatbot webhook endpoints
-
-### 🧪 Testing & Documentation
-- [ ] Unit tests setup
-- [ ] E2E tests
-- [ ] API documentation
-- [ ] User guide
-
-## 📋 TODO LIST - PHASE 2: BACKEND (n8n)
-
-### 🔄 Core Workflows
-- [ ] Google Drive Scanner Workflow
-- [ ] DeepFace AI Processing Workflow
-- [ ] Image Selection & Copying Workflow
-- [ ] Chatbot Response Workflow
-
-### 🤖 AI Integration
-- [ ] DeepFace API setup
-- [ ] Face detection workflow
-- [ ] Image quality assessment
-- [ ] Best photo selection algorithm
-
-### 💬 Chatbot Integration
-- [ ] Zalo Official Account setup
-- [ ] Facebook Messenger setup
-- [ ] Webhook handling
-- [ ] Message processing workflows
-
-## 🔒 Security & Performance
-- [ ] Authentication & Authorization
-- [ ] Rate limiting
-- [ ] Image processing optimization
-- [ ] Error handling & logging
-- [ ] Data backup strategies
-
----
-
-## ✅ HOÀN THÀNH FRONTEND
-
-**Frontend Vue.js đã được tạo hoàn chỉnh!** 🎉
-
-### 🚀 Quick Start
-
-```bash
-# Chuyển vào thư mục frontend
-cd frontend
-
-# Cài đặt dependencies  
+# Cài đặt dependencies
 npm install
 
-# Khởi chạy development server
+# Tạo file .env với nội dung sau
+echo "VITE_API_BASE_URL=http://localhost:5000/api" > .env
+
+# Chạy development server
 npm run dev
 ```
 
 Frontend sẽ chạy tại: **http://localhost:3000**
 
-### 🔑 Demo Accounts
-- **Admin**: `admin` / `admin123`
-- **User**: `user` / `user123`
+### 4. Cài Đặt & Chạy n8n Workflow Engine
 
-### 📱 Tính Năng Đã Hoàn Thành
+#### Windows
+```bash
+# Tạo và kích hoạt môi trường ảo Python
+python -m venv .venv
+.venv\Scripts\activate
 
-#### 🔐 Authentication System
-- ✅ Login/Logout với JWT
-- ✅ Role-based routing (Admin/User)
-- ✅ Demo accounts sẵn sàng
+# Cài đặt n8n
+pip install n8n
 
-#### 👨‍💼 Admin Panel Complete
-- ✅ **Dashboard**: Statistics, Quick Actions, System Status
-- ✅ **User Management**: CRUD operations với dialog
-- ✅ **Workflow Management**: n8n integration ready
-- ✅ **System Config**: Google Drive, Chatbot, AI settings
-
-#### 👤 User Interface Complete  
-- ✅ **User Dashboard**: Stats, Upload, Processing Queue
-- ✅ **Image Gallery**: Grid view, Search, Filter, Lightbox
-- ✅ **Chatbot Interface**: Zalo/Facebook chat simulation
-
-#### 🎨 UI/UX Features
-- ✅ Modern Element Plus components
-- ✅ Responsive design (mobile-friendly)
-- ✅ Dark/Light theme support
-- ✅ Smooth animations & transitions
-- ✅ Custom scrollbars & hover effects
-
-#### 🔧 Technical Stack
-- ✅ **Vue 3** + Composition API + TypeScript
-- ✅ **Pinia** state management  
-- ✅ **Vue Router** với navigation guards
-- ✅ **Axios** API client với interceptors
-- ✅ **Element Plus** UI framework
-- ✅ **Vite** build tool
-
-### 📁 Project Structure
+# Chạy n8n
+n8n start
 ```
-frontend/
-├── src/
-│   ├── layouts/           # AdminLayout, UserLayout
-│   ├── pages/            # All pages complete
-│   │   ├── admin/        # Dashboard, Users, Workflows, Config
-│   │   ├── user/         # Dashboard, Gallery, Chatbot  
-│   │   └── LoginPage.vue
-│   ├── router/           # Vue Router config
-│   ├── services/         # API services
-│   ├── stores/           # Pinia stores (auth)
-│   ├── types/            # TypeScript definitions
-│   └── ...
+
+#### macOS/Linux
+```bash
+# Tạo và kích hoạt môi trường ảo Python
+python -m venv .venv
+source .venv/bin/activate
+
+# Cài đặt n8n
+pip install n8n
+
+# Chạy n8n
+n8n start
 ```
+
+n8n Workflow Engine sẽ chạy tại: **http://localhost:5678**
+
+### 5. Cấu Hình n8n Workflows
+1. Truy cập n8n tại http://localhost:5678
+2. Đăng nhập với tài khoản mặc định (email: admin@example.com, password: password)
+3. Import các workflow từ thư mục `n8n-workflows`:
+   - Vào **Workflows** > **Import from file**
+   - Chọn các file JSON trong thư mục `n8n-workflows/core-workflows`
+   - Lặp lại cho các thư mục workflow khác
+4. Kích hoạt các workflow cần thiết
+
+### 6. Truy Cập Hệ Thống
+- **Frontend**: http://localhost:3000
+  - **Admin**: `admin` / `admin123`
+  - **User**: `user` / `user123`
+- **Backend API**: http://localhost:5000
+- **n8n Workflow Engine**: http://localhost:5678
+
+## 🔧 Cấu Hình Nâng Cao
+
+### Google Drive API
+1. Tạo project trên [Google Cloud Console](https://console.cloud.google.com/)
+2. Kích hoạt Google Drive API
+3. Tạo OAuth 2.0 Client ID và Client Secret
+4. Cập nhật thông tin trong Admin Panel > System Config
+
+### Chatbot Integration
+#### Zalo
+1. Đăng ký [Zalo Official Account](https://oa.zalo.me/)
+2. Tạo và cấu hình webhook URL (http://your-domain/api/chatbot/webhook/zalo)
+3. Lấy Access Token và cập nhật trong Admin Panel
+
+#### Facebook
+1. Tạo [Facebook App](https://developers.facebook.com/)
+2. Cấu hình Messenger webhook (http://your-domain/api/chatbot/webhook/facebook)
+3. Lấy Page Access Token và cập nhật trong Admin Panel
+
+## 🧪 Testing
+### Backend API
+```bash
+cd backend
+npm test
+```
+
+### Frontend
+```bash
+cd frontend
+npm run test
+```
+
+## 🚀 Deployment
+### Backend API
+```bash
+cd backend
+npm run build
+npm start
+```
+
+### Frontend
+```bash
+cd frontend
+npm run build
+```
+Các file build sẽ được tạo trong thư mục `dist/`
+
+### n8n Workflow Engine
+Để chạy n8n trong production, bạn nên sử dụng Docker hoặc PM2:
+```bash
+# Sử dụng PM2
+npm install -g pm2
+pm2 start "n8n start" --name "n8n"
+```
+
+## 📋 Tính Năng Đã Hoàn Thành
+
+### ✅ Frontend
+- ✅ Authentication System (JWT)
+- ✅ Admin Panel
+- ✅ User Dashboard
+- ✅ Image Gallery
+- ✅ Chatbot Interface
+
+### ✅ Backend API
+- ✅ Authentication API
+- ✅ Image Management API
+- ✅ Google Drive Integration API
+- ✅ Chatbot Webhook API
+- ✅ n8n Workflow Integration API
+
+### ✅ n8n Workflows
+- ✅ Google Drive Scanner
+- ✅ DeepFace Processing
+- ✅ Image Selection
+- ✅ Chatbot Response
+
+## 📝 Lưu Ý Quan Trọng
+1. Đảm bảo MongoDB đang chạy trước khi khởi động Backend API
+2. n8n cần được cấu hình với các credentials phù hợp cho Google Drive và DeepFace
+3. Để sử dụng chatbot webhooks trong môi trường development, bạn cần sử dụng ngrok hoặc một dịch vụ tương tự để tạo public URL
+
+## 🔍 Troubleshooting
+- **MongoDB Connection Error**: Kiểm tra MongoDB đang chạy và URI kết nối đúng
+- **n8n Workflow Execution Error**: Kiểm tra logs trong n8n UI và đảm bảo các credentials đã được cấu hình
+- **API Connection Error**: Kiểm tra CORS settings và đảm bảo Backend API đang chạy
 
 ---
 
 **Next Steps**: 
 1. ✅ ~~Frontend hoàn thành~~
-2. 🔄 **Setup n8n Backend workflows**
-3. 🔄 **Integrate Google Drive API**  
-4. 🔄 **Setup DeepFace AI processing**
-5. 🔄 **Configure Zalo/Facebook chatbots** 
+2. ✅ ~~n8n Backend workflows hoàn thành~~
+3. ✅ ~~API Integration hoàn thành~~
+4. 🔄 **Deploy to production**
+5. 🔄 **User testing and feedback** 
+
+
+admin / admin123 (role: admin)
+user / user123 (role: user)

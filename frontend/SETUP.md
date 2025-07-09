@@ -19,9 +19,10 @@ cd Gbot/frontend
 npm install
 ```
 
-### 3. Environment Configuration
+### 3. Environmen/t Configuration
 ```bash
-# Copy environment file
+# C/
+"/opy environment file
 cp .env.example .env
 
 # Edit .env file với thông tin của bạn
@@ -269,5 +270,3 @@ npm run build
 - Review TypeScript errors
 
 ---
-
-✨ **Happy Coding!** Enjoy building your Smart Photo Management System! 
