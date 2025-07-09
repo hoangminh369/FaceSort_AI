@@ -30,4 +30,4 @@ coverage
 *.tsbuildinfo
 
 .venv
-.env
+*.env
