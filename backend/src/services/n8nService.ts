@@ -74,28 +74,28 @@ class N8nService {
    * Execute the Google Drive scanner workflow
    */
   async executeDriveScan(driveConfig: any) {
-    return this.executeWorkflow('google-drive-scanner', { driveConfig });
+    return this.executeWorkflow(config.n8n.workflowIds.googleDriveScanner, { driveConfig });
   }
 
   /**
    * Execute the DeepFace processing workflow
    */
   async executeDeepFaceProcessing(imageIds: string[]) {
-    return this.executeWorkflow('deepface-processing', { imageIds });
+    return this.executeWorkflow(config.n8n.workflowIds.deepFaceProcessing, { imageIds });
   }
 
   /**
    * Execute the image selection workflow
    */
   async executeImageSelection(userId: string) {
-    return this.executeWorkflow('image-selection', { userId });
+    return this.executeWorkflow(config.n8n.workflowIds.imageSelection, { userId });
   }
 
   /**
    * Execute the chatbot response workflow
    */
   async executeChatbotResponse(userId: string, message: string, platform: 'zalo' | 'facebook') {
-    return this.executeWorkflow('chatbot-response', { userId, message, platform });
+    return this.executeWorkflow(config.n8n.workflowIds.chatbotResponse, { userId, message, platform });
   }
 }
 
