@@ -323,7 +323,7 @@
     <!-- Improved Image Upload Dialog -->
     <el-dialog
       v-model="imageUploadVisible"
-      title="Upload Image for Analysis"
+      title="Upload Images for Analysis"
       width="700px"
       destroy-on-close
       top="10vh"
@@ -333,8 +333,8 @@
         <div class="upload-instruction">
           <el-icon :size="40" class="instruction-icon"><PictureRounded /></el-icon>
           <div class="instruction-text">
-            <h3>Upload a photo for AI analysis</h3>
-            <p>Our AI will analyze facial features, image quality, and other parameters to help you select the best photos.</p>
+            <h3>Upload photos for AI analysis</h3>
+            <p>Our AI will analyze facial features, image quality, and other parameters to help you select the best photos. You can upload up to 20 images at once.</p>
           </div>
         </div>
         
@@ -346,14 +346,15 @@
           :on-success="handleImageUploadSuccess"
           :on-error="handleImageUploadError"
           :before-upload="beforeImageUpload"
-          :limit="1"
+          :limit="20"
           :auto-upload="true"
           accept="image/*"
+          multiple
           drag
         >
           <div class="upload-content">
             <el-icon class="el-icon--upload" :size="40"><upload-filled /></el-icon>
-            <div class="el-upload__text">Drop image here or <em>click to upload</em></div>
+            <div class="el-upload__text">Drop images here or <em>click to upload</em></div>
           </div>
           <template #tip>
             <div class="el-upload__tip">
@@ -364,8 +365,9 @@
                 show-icon
               >
                 <ul class="upload-requirements">
-                  <li>JPG or PNG format only</li>
-                  <li>Maximum file size: 5MB</li>
+                  <li>JPG, PNG, WebP, or GIF format</li>
+                  <li>Maximum file size: 1GB per image</li>
+                  <li>Up to 20 images can be uploaded at once</li>
                   <li>Good lighting recommended for best results</li>
                 </ul>
               </el-alert>
@@ -373,9 +375,9 @@
           </template>
         </el-upload>
         
-        <div class="upload-preview" v-if="uploadedImageId">
+        <div class="upload-preview" v-if="analysisImageIds.length > 0">
           <div class="preview-badge">
-            <el-badge value="Uploaded" type="success">
+            <el-badge :value="`${analysisImageIds.length} Uploaded`" type="success">
               <el-icon :size="24"><Check /></el-icon>
             </el-badge>
           </div>
@@ -387,12 +389,12 @@
           <el-button @click="imageUploadVisible = false" plain>Cancel</el-button>
           <el-button 
             type="primary" 
-            :disabled="!uploadedImageId" 
+            :disabled="!analysisImageIds.length" 
             @click="analyzeUploadedImage"
             :loading="analyzing"
           >
             <el-icon><Crop /></el-icon>
-            Analyze Image
+            Analyze Images
           </el-button>
         </div>
       </template>
@@ -479,7 +481,7 @@
           <div v-if="comparisonStep === 3" class="comparison-step">
             <div class="step-header">
               <h3>{{ comparisonForm.source === 'drive' ? 'Google Drive Photos' : 'Upload Photos' }}</h3>
-              <p>{{ comparisonForm.source === 'drive' ? 'All photos from your connected Google Drive will be processed' : 'Upload up to 10 photos for comparison' }}</p>
+              <p>{{ comparisonForm.source === 'drive' ? 'All photos from your connected Google Drive will be processed' : 'Upload up to 50 photos for comparison' }}</p>
             </div>
             
             <template v-if="comparisonForm.source === 'drive'">
@@ -511,7 +513,7 @@
                 :on-success="handleComparisonUploadSuccess"
                 :on-error="handleImageUploadError"
                 :before-upload="beforeImageUpload"
-                :limit="10"
+                :limit="50"
                 :auto-upload="true"
                 accept="image/*"
                 multiple
@@ -523,10 +525,10 @@
               <div class="upload-counter" v-if="uploadedImageIds.length > 0">
                 <el-progress 
                   type="circle" 
-                  :percentage="Math.min(100, uploadedImageIds.length * 10)" 
+                  :percentage="Math.min(100, uploadedImageIds.length * 2)" 
                   :width="80"
                   :stroke-width="10"
-                  :format="() => `${uploadedImageIds.length}/10`"
+                  :format="() => `${uploadedImageIds.length}/50`"
                 ></el-progress>
                 <div class="counter-text">
                   <span>{{ uploadedImageIds.length }} {{ uploadedImageIds.length === 1 ? 'photo' : 'photos' }} uploaded</span>
@@ -639,8 +641,8 @@ const photoComparisonVisible = ref(false)
 const processingComparison = ref(false)
 const analyzing = ref(false)
 const chatContainer = ref<HTMLElement>()
-const uploadedImageId = ref<string | null>(null)
 const uploadedImageIds = ref<string[]>([])
+const analysisImageIds = ref<string[]>([])
 
 // Chat History
 const activeConversationId = ref<string | null>(null);
@@ -906,17 +908,18 @@ const sendMessage = async () => {
   const userMessageText = newMessage.value;
   newMessage.value = '';
 
+  // Optimistically add user message to UI
+  const tempUserMessage: ChatMessage = {
+    _id: Date.now().toString(),
+    conversationId: activeConversationId.value || 'temp',
+    userId: '1', // This should come from auth store
+    message: userMessageText,
+    platform: selectedPlatform.value,
+    type: 'text',
+    createdAt: new Date().toISOString()
+  };
+
   try {
-    // Optimistically add user message to UI
-    const tempUserMessage: ChatMessage = {
-      _id: Date.now().toString(),
-      conversationId: activeConversationId.value || 'temp',
-      userId: '1', // This should come from auth store
-      message: userMessageText,
-      platform: selectedPlatform.value,
-      type: 'text',
-      createdAt: new Date().toISOString()
-    };
     messages.value.push(tempUserMessage);
     scrollToBottom();
     
@@ -1040,23 +1043,25 @@ const showTemplatesModal = () => {
 }
 
 const showImageUpload = () => {
-  uploadedImageId.value = null
+  analysisImageIds.value = []
   imageUploadVisible.value = true
 }
 
 const handleImageUploadSuccess = (response: any) => {
-  const first = Array.isArray(response.data) ? response.data[0] : response.data
-  if (first) {
-    uploadedImageId.value = first._id || first.id
-  }
+  const files = Array.isArray(response.data) ? response.data : [response.data]
+  files.forEach(file => {
+    if (file && (file._id || file.id)) {
+      analysisImageIds.value.push(file._id || file.id)
+    }
+  })
   ElMessage({
-    message: 'Image uploaded successfully!',
+    message: `${files.length} image(s) uploaded successfully!`,
     type: 'success',
     duration: 2000
   })
   
   // Update usage stats
-  usageStats.value.photos++
+  usageStats.value.photos += files.length
 }
 
 const handleComparisonUploadSuccess = (response: any) => {
@@ -1074,13 +1079,13 @@ const handleComparisonUploadSuccess = (response: any) => {
   })
    
   ElMessage({
-    message: 'Image(s) uploaded for comparison',
+    message: `${files.length} image(s) uploaded for comparison`,
     type: 'success',
     duration: 2000
   })
    
   // Update usage stats
-  usageStats.value.photos++
+  usageStats.value.photos += files.length
 }
 
 const handleImageUploadError = (error: any) => {
@@ -1092,35 +1097,35 @@ const handleImageUploadError = (error: any) => {
 }
 
 const beforeImageUpload = (rawFile: File) => {
-  const isJPGOrPNG = rawFile.type === 'image/jpeg' || rawFile.type === 'image/png'
-  const isLt5M = rawFile.size / 1024 / 1024 < 5
+  const isValidFormat = rawFile.type === 'image/jpeg' || rawFile.type === 'image/png' || rawFile.type === 'image/webp' || rawFile.type === 'image/gif'
+  const isLt1GB = rawFile.size / 1024 / 1024 / 1024 < 1 // 1GB limit
   
-  if (!isJPGOrPNG) {
-    ElMessage.error('Image must be JPG/PNG format!')
+  if (!isValidFormat) {
+    ElMessage.error('Image must be JPG, PNG, WebP, or GIF format!')
   }
-  if (!isLt5M) {
-    ElMessage.error('Image must be smaller than 5MB!')
+  if (!isLt1GB) {
+    ElMessage.error('Image must be smaller than 1GB!')
   }
-  return isJPGOrPNG && isLt5M
+  return isValidFormat && isLt1GB
 }
 
 const analyzeUploadedImage = async () => {
-  if (!uploadedImageId.value) return
+  if (!analysisImageIds.value.length) return
   
   sending.value = true
   analyzing.value = true
   imageUploadVisible.value = false
   
   try {
-    const response = await chatbotApi.evaluateImages([uploadedImageId.value])
+    const response = await chatbotApi.evaluateImages(analysisImageIds.value)
     
     // Create a bot message with the response
     const botResponse: ChatMessage = {
       _id: Date.now().toString(),
       conversationId: activeConversationId.value || 'temp', // Use active conversation or a temporary one
       userId: 'bot',
-      message: 'Image analysis',
-      response: sanitizeText(`Image evaluation started. This will take a moment to process. I'll find faces and assess the quality of the image using factors like lighting, focus, and composition.`),
+      message: 'Images analysis',
+      response: sanitizeText(`Images evaluation started. This will take a moment to process ${analysisImageIds.value.length} image(s). I'll find faces and assess the quality of the images using factors like lighting, focus, and composition.`),
       platform: selectedPlatform.value,
       type: 'text',
       createdAt: new Date().toISOString()
@@ -1132,7 +1137,7 @@ const analyzeUploadedImage = async () => {
     // Add to recent activity
     recentActivity.value.unshift({
       id: Date.now().toString(),
-      description: 'Started image analysis',
+      description: `Started analysis of ${analysisImageIds.value.length} image(s)`,
       timestamp: new Date().toISOString()
     });
     
@@ -1141,7 +1146,7 @@ const analyzeUploadedImage = async () => {
     
   } catch (error: any) {
     ElMessage({
-      message: error.message || 'Failed to analyze image',
+      message: error.message || 'Failed to analyze images',
       type: 'error',
       duration: 5000
     });
