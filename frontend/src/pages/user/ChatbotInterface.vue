@@ -227,7 +227,20 @@
           </div>
           
           <!-- Improved message input with suggestions and emojis -->
-          <div class="message-input">
+          <div class="message-input" style="display: flex; align-items: flex-end; gap: 8px;">
+            <!-- Nút upload ảnh bên trái -->
+            <el-button
+              class="upload-btn-left"
+              type="primary"
+              circle
+              size="large"
+              @click="showImageUpload"
+              :disabled="sending"
+              style="margin-bottom: 8px;"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-button>
+            <!-- Input chat -->
             <el-input
               v-model="newMessage"
               placeholder="Type your message..."
@@ -242,9 +255,7 @@
                   <el-tooltip content="Message Templates" placement="top">
                     <el-icon v-if="!sending" @click="showTemplatesModal" class="template-icon"><Document /></el-icon>
                   </el-tooltip>
-                  <el-tooltip content="Upload Image" placement="top">
-                    <el-icon v-if="!sending" @click="showImageUpload" class="template-icon"><Upload /></el-icon>
-                  </el-tooltip>
+                  <!-- Đã có icon upload ở ngoài, không cần ở đây nữa -->
                 </div>
               </template>
               <template #append>
@@ -261,7 +272,6 @@
                 </el-button>
               </template>
             </el-input>
-            
             <!-- Quick reply suggestions -->
             <div class="quick-replies" v-if="!sending && filteredMessages.length > 0">
               <el-button v-for="(reply, index) in quickReplies" :key="index" 
@@ -330,8 +340,9 @@
         
         <el-upload
           class="image-uploader"
-          action="/api/images/upload"
-          :headers="{ Authorization: `Bearer ${localStorage.getItem('token')}` }"
+          :action="uploadActionUrl"
+          name="images"
+          :headers="authHeaders"
           :on-success="handleImageUploadSuccess"
           :on-error="handleImageUploadError"
           :before-upload="beforeImageUpload"
@@ -494,8 +505,9 @@
             <template v-else>
               <el-upload
                 class="photo-comparison-uploader"
-                action="/api/images/upload"
-                :headers="{ Authorization: `Bearer ${localStorage.getItem('token')}` }"
+                :action="uploadActionUrl"
+                name="images"
+                :headers="authHeaders"
                 :on-success="handleComparisonUploadSuccess"
                 :on-error="handleImageUploadError"
                 :before-upload="beforeImageUpload"
@@ -1033,7 +1045,10 @@ const showImageUpload = () => {
 }
 
 const handleImageUploadSuccess = (response: any) => {
-  uploadedImageId.value = response.data.id
+  const first = Array.isArray(response.data) ? response.data[0] : response.data
+  if (first) {
+    uploadedImageId.value = first._id || first.id
+  }
   ElMessage({
     message: 'Image uploaded successfully!',
     type: 'success',
@@ -1045,25 +1060,27 @@ const handleImageUploadSuccess = (response: any) => {
 }
 
 const handleComparisonUploadSuccess = (response: any) => {
-  if (response.data && response.data.id) {
-    uploadedImageIds.value.push(response.data.id)
-    
-    // Add to recent activity
-    recentActivity.value.unshift({
-      id: Date.now().toString(),
-      description: `Uploaded image: ${response.data.filename}`,
-      timestamp: new Date().toISOString()
-    })
-    
-    ElMessage({
-      message: 'Image uploaded for comparison',
-      type: 'success',
-      duration: 2000
-    })
-    
-    // Update usage stats
-    usageStats.value.photos++
-  }
+  const files = Array.isArray(response.data) ? response.data : [response.data]
+  files.forEach(file => {
+    if (file && (file._id || file.id)) {
+      uploadedImageIds.value.push(file._id || file.id)
+    }
+  })
+  // Add to recent activity
+  recentActivity.value.unshift({
+    id: Date.now().toString(),
+    description: `Uploaded ${files.length} image(s)` ,
+    timestamp: new Date().toISOString()
+  })
+   
+  ElMessage({
+    message: 'Image(s) uploaded for comparison',
+    type: 'success',
+    duration: 2000
+  })
+   
+  // Update usage stats
+  usageStats.value.photos++
 }
 
 const handleImageUploadError = (error: any) => {
@@ -1457,6 +1474,18 @@ const confirmDelete = async () => {
     deleteItemId.value = null;
   }
 };
+
+// After existing refs declarations, add authHeaders const
+const authHeaders = computed(() => {
+  const token = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('token') : ''
+  return { Authorization: `Bearer ${token || ''}` }
+})
+
+// after authHeaders definition add:
+const uploadActionUrl = computed(() => {
+  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+  return `${base}/images/upload`
+})
 </script>
 
 <style scoped>

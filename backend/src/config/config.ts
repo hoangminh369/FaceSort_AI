@@ -11,6 +11,12 @@ const config = {
   n8n: {
     baseUrl: process.env.N8N_BASE_URL || 'http://localhost:5678',
     apiKey: process.env.N8N_API_KEY || '',
+    workflowIds: {
+      deepFaceProcessing: process.env.N8N_DEEPFACE_PROCESSING_ID || 'deepface-processing',
+      googleDriveScanner: process.env.N8N_GOOGLE_DRIVE_SCANNER_ID || 'google-drive-scanner',
+      imageSelection: process.env.N8N_IMAGE_SELECTION_ID || 'image-selection',
+      chatbotResponse: process.env.N8N_CHATBOT_RESPONSE_ID || 'chatbot-response'
+    }
   },
   geminiModelId: process.env.GEMINI_MODEL_ID || 'gemini-1.5-pro',
   googleDrive: {
