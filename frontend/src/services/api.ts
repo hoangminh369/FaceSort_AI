@@ -277,8 +277,9 @@ class ApiClient {
     return response.data!
   }
   
-  async listDriveFiles(parentId?: string): Promise<any[]> {
-    const url = parentId ? `/drive/files?parentId=${parentId}` : '/drive/files'
+  // Corrected: backend expects 'folderId' query param, not 'parentId'
+  async listDriveFiles(folderId?: string): Promise<any[]> {
+    const url = folderId ? `/drive/files?folderId=${folderId}` : '/drive/files'
     const response = await this.get<any[]>(url)
     return response.data!
   }
