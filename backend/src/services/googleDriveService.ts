@@ -192,6 +192,37 @@ class GoogleDriveService {
   }
   
   /**
+   * Find or create a folder by name
+   */
+  async findOrCreateFolder(driveConfig: IDriveConfig, folderName: string, parentId: string = 'root'): Promise<DriveFolder> {
+    try {
+      const drive = this.getClient(driveConfig)
+      
+      // First, try to find existing folder
+      const query = `name = '${folderName}' and '${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+      
+      const searchResult = await drive.files.list({
+        q: query,
+        fields: 'files(id, name, mimeType, parents)',
+        pageSize: 1
+      })
+      
+      if (searchResult.data.files && searchResult.data.files.length > 0) {
+        console.log(`[GoogleDriveService] Found existing folder: ${folderName} (${searchResult.data.files[0].id})`)
+        return searchResult.data.files[0] as DriveFolder
+      }
+      
+      // If not found, create new folder
+      console.log(`[GoogleDriveService] Creating new folder: ${folderName} in parent ${parentId}`)
+      return await this.createFolder(driveConfig, folderName, parentId)
+      
+    } catch (error: any) {
+      console.error('Error finding/creating folder:', error)
+      throw new Error(`Failed to find or create folder: ${error.message || 'Unknown error'}`)
+    }
+  }
+
+  /**
    * Copy a file to another folder in Google Drive
    */
   async copyFile(driveConfig: IDriveConfig, fileId: string, destinationFolderId: string, newName?: string): Promise<DriveFile> {
@@ -286,6 +317,74 @@ class GoogleDriveService {
       }
       
       throw new Error(`Failed to list image files: ${error.message || 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Get image files from specific folder in Google Drive
+   */
+  async getImageFilesFromFolder(driveConfig: IDriveConfig, folderId: string, maxResults: number = 1000): Promise<DriveFile[]> {
+    try {
+      const drive = this.getClient(driveConfig)
+      
+      // Query for image files in specific folder
+      const query = `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`
+      
+      console.log(`[GoogleDriveService] Getting images from folder: ${folderId} with query: ${query}`)
+      
+      const res = await drive.files.list({
+        q: query,
+        fields: 'files(id, name, mimeType, thumbnailLink, webViewLink, size, modifiedTime, parents)',
+        pageSize: maxResults
+      })
+      
+      const files = res.data.files as DriveFile[] || []
+      console.log(`[GoogleDriveService] Found ${files.length} images in folder ${folderId}`)
+      
+      return files
+    } catch (error: any) {
+      console.error('Error listing image files from folder:', error)
+      
+      if (error.message?.includes('invalid_grant')) {
+        throw new Error('Authorization expired. Please re-authorize the application.')
+      }
+      
+      throw new Error(`Failed to list image files from folder: ${error.message || 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Get image files from specific folder and all its subfolders recursively
+   */
+  async getImageFilesFromFolderRecursive(driveConfig: IDriveConfig, folderId: string, maxResults: number = 1000): Promise<DriveFile[]> {
+    try {
+      const allImages: DriveFile[] = []
+      
+      // Get images from current folder
+      const folderImages = await this.getImageFilesFromFolder(driveConfig, folderId, maxResults)
+      allImages.push(...folderImages)
+      
+      // Get subfolders
+      const subfolders = await this.listFolders(driveConfig, folderId)
+      
+      // Recursively get images from subfolders
+      for (const subfolder of subfolders) {
+        if (allImages.length >= maxResults) break
+        
+        const subfolderImages = await this.getImageFilesFromFolderRecursive(
+          driveConfig, 
+          subfolder.id, 
+          maxResults - allImages.length
+        )
+        allImages.push(...subfolderImages)
+      }
+      
+      console.log(`[GoogleDriveService] Found total ${allImages.length} images from folder ${folderId} and its subfolders`)
+      
+      return allImages.slice(0, maxResults)
+    } catch (error: any) {
+      console.error('Error listing image files from folder recursively:', error)
+      throw new Error(`Failed to list image files from folder recursively: ${error.message || 'Unknown error'}`)
     }
   }
 }

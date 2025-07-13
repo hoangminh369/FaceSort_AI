@@ -7,6 +7,13 @@ export interface IChatMessage extends Document {
   response?: string;
   platform: 'web' | 'zalo' | 'facebook';
   type: 'text' | 'image' | 'notification';
+  imageUrl?: string;
+  attachments?: Array<{
+    id: string;
+    url: string;
+    type: 'image' | 'file';
+    name?: string;
+  }>;
   createdAt: Date;
 }
 
@@ -21,7 +28,12 @@ const ChatMessageSchema: Schema = new Schema(
       type: String,
       required: true,
     },
-    message: { type: String, required: true },
+    message: { 
+      type: String, 
+      required: function(this: IChatMessage) {
+        return this.type !== 'image';
+      }
+    },
     response: { type: String },
     platform: {
       type: String,
@@ -33,6 +45,27 @@ const ChatMessageSchema: Schema = new Schema(
       enum: ['text', 'image', 'notification'],
       default: 'text',
     },
+    imageUrl: {
+      type: String,
+    },
+    attachments: [{
+      id: {
+        type: String,
+        required: true,
+      },
+      url: {
+        type: String,
+        required: true,
+      },
+      type: {
+        type: String,
+        enum: ['image', 'file'],
+        required: true,
+      },
+      name: {
+        type: String,
+      },
+    }],
   },
   { timestamps: true }
 );

@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 import googleAiService from '../services/googleAiService';
 import ChatMessage from '../models/ChatMessage';
 import Conversation from '../models/Conversation';
+import User from '../models/User';
 
 // @desc    Get all conversations for a user
 // @route   GET /api/chatbot/conversations
@@ -261,19 +262,63 @@ export const evaluateImages = async (req: Request, res: Response) => {
       { _id: { $in: images.map(img => img._id) } },
       { status: 'processing' }
     );
+
+    // Process each image directly with deepface service
+    const processedResults = [];
     
-    // Execute DeepFace processing workflow
-    const result = await n8nService.executeDeepFaceProcessing(
-      images.map(img => (img._id as mongoose.Types.ObjectId).toString())
-    );
+    for (const image of images) {
+      try {
+        console.log(`Processing image: ${image.url}`);
+        
+        // Extract face embeddings
+        const embeddingResult = await deepFaceService.extractFaceEmbeddings(image.url);
+        
+        // Get image quality
+        const qualityResult = await deepFaceService.analyzeImageQuality(image.url);
+        
+        // Analyze face attributes
+        const faceAttributes = await deepFaceService.analyzeFaceAttributes(image.url);
+        
+        // Update image in database
+        await Image.findByIdAndUpdate(image._id as mongoose.Types.ObjectId, {
+          status: 'processed',
+          faceAnalysis: faceAttributes,
+          qualityScore: qualityResult.qualityScore,
+          faceCount: embeddingResult?.faceCount || 0,
+          processedAt: new Date()
+        });
+        
+        processedResults.push({
+          imageId: (image._id as mongoose.Types.ObjectId).toString(),
+          filename: image.filename,
+          faceCount: embeddingResult?.faceCount || 0,
+          qualityScore: qualityResult.qualityScore,
+          hasEmbeddings: !!embeddingResult && embeddingResult.embeddings.length > 0
+        });
+        
+      } catch (error) {
+        console.error(`Error processing image ${(image._id as mongoose.Types.ObjectId).toString()}:`, error);
+        
+        // Mark as error
+        await Image.findByIdAndUpdate(image._id as mongoose.Types.ObjectId, {
+          status: 'error',
+          processedAt: new Date()
+        });
+        
+                 processedResults.push({
+           imageId: (image._id as mongoose.Types.ObjectId).toString(),
+           filename: image.filename,
+           error: error instanceof Error ? error.message : 'Processing failed'
+         });
+      }
+    }
     
     res.status(200).json({
       success: true,
       data: {
-        executionId: result.id,
-        status: result.status,
-        message: 'Image evaluation started',
-        imageCount: images.length
+        message: 'Image evaluation completed',
+        imageCount: images.length,
+        processedResults
       }
     });
   } catch (error: any) {
@@ -475,15 +520,20 @@ export const processDriveImages = async (req: Request, res: Response) => {
       });
     }
     
-    // Get images from Drive
-    const images = await googleDriveService.getAllImageFiles(driveConfig, 100);
+    // Get images from configured folder in Drive
+    const configuredFolder = driveConfig.folderId || 'root';
+    console.log(`[processDriveImages] Scanning folder: ${configuredFolder}`);
+    
+    const images = await googleDriveService.getImageFilesFromFolderRecursive(driveConfig, configuredFolder, 100);
     
     if (images.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'No images found in Google Drive'
+        error: `No images found in configured folder (${configuredFolder}). Please check your folder configuration.`
       });
     }
+    
+    console.log(`[processDriveImages] Found ${images.length} images in configured folder ${configuredFolder}`);
     
     // Start the workflow for processing and image selection
     const result = await n8nService.executeDriveScan(driveConfig);
@@ -537,75 +587,533 @@ export const getChatMessages = async (req: Request, res: Response) => {
 // @access  Private
 export const sendChatMessage = async (req: Request, res: Response) => {
   try {
-    let { message, platform, conversationId } = req.body;
+    let { message, platform, conversationId, imageIds } = req.body;
     const userId = req.user?.id;
 
-    if (!message || !platform) {
-      return res.status(400).json({ success: false, error: 'Message and platform are required' });
+    // Step 1: Input validation
+    if ((!message || !message.trim()) && (!imageIds || imageIds.length === 0)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Either message text or images are required' 
+      });
     }
 
-    let conversation;
+    if (!platform) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Platform is required' 
+      });
+    }
 
+    // Step 2: Handle conversation (find existing or create new)
+    let conversation;
     if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
       conversation = await Conversation.findOne({ _id: conversationId, userId });
       if (!conversation) {
         return res.status(404).json({ success: false, error: 'Conversation not found' });
       }
     } else {
-      // Create a new conversation
-      const a_title = message.substring(0, 30);
+      // Create a new conversation with appropriate title
+      const title = message && message.trim() 
+        ? message.substring(0, 30) + (message.length > 30 ? '...' : '')
+        : 'Image conversation';
+      
       conversation = new Conversation({
         userId,
-        title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
+        title,
         platform,
       });
+      await conversation.save();
     }
+
+    // Step 3: Prepare messages to save
+    const messagesToSave: any[] = [];
+
+    // Add text message if exists
+    if (message && message.trim()) {
+      const userMessage = new ChatMessage({
+        conversationId: conversation._id,
+        userId,
+        message: message.trim(),
+        platform,
+        type: 'text',
+      });
+      messagesToSave.push(userMessage);
+    }
+
+    // Step 4: Add image messages if exist
+    if (Array.isArray(imageIds) && imageIds.length > 0) {
+      try {
+        const images = await Image.find({ 
+          _id: { $in: imageIds },
+          userId // Ensure user owns these images
+        });
+
+        if (images.length !== imageIds.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Some images not found or access denied'
+          });
+        }
+
+        // Add image URLs to the main message as attachments instead of separate messages
+        const lastMessage = messagesToSave[messagesToSave.length - 1];
+        if (lastMessage) {
+          // Add attachments to the last message
+          lastMessage.attachments = images.map(image => ({
+            id: (image._id as mongoose.Types.ObjectId).toString(),
+            url: image.url,
+            type: 'image' as const,
+            name: image.filename
+          }));
+        } else {
+          // If no text message, create an image message
+          const imageMessage = new ChatMessage({
+            conversationId: conversation._id,
+            userId,
+            message: `Sent ${images.length} image${images.length > 1 ? 's' : ''}`,
+            platform,
+            type: 'image',
+            attachments: images.map(image => ({
+              id: (image._id as mongoose.Types.ObjectId).toString(),
+              url: image.url,
+              type: 'image' as const,
+              name: image.filename
+            })),
+          });
+          messagesToSave.push(imageMessage);
+        }
+      } catch (imageError) {
+        console.error('Error processing images:', imageError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to process images'
+        });
+      }
+    }
+
+    // Save all messages in parallel
+    if (messagesToSave.length > 0) {
+      await Promise.all(messagesToSave.map(msg => msg.save()));
+    }
+
+    // Step 5: Generate AI response
+    let aiResponse = '';
+    console.log('Step 5: Starting AI response generation...');
+    console.log('Message:', message);
+    console.log('ImageIds:', imageIds);
     
-    // Save user message
-    const userMessage = new ChatMessage({
-      conversationId: conversation._id,
-      userId,
-      message,
-      platform,
-    });
+    // Check if this is a specific command to process photos with customer name
+    const isPhotoProcessingRequest = message && imageIds && imageIds.length > 0 && (
+      // English patterns: "Process these photos for customer [name]"
+      /process\s+(?:these\s+)?(?:photos?|images?)\s+for\s+(?:customer\s+)?([A-Za-z0-9\s]+)/i.test(message) ||
+      // Vietnamese patterns: "Xử lý ảnh cho khách hàng [name]"
+      /(?:xử lý|x[ử]?\s*l[ý]?)\s+(?:những\s+)?(?:ảnh|hình)\s+cho\s+(?:khách hàng\s+)?([A-Za-z0-9\s]+)/i.test(message) ||
+      // Alternative patterns: "Process photos for [name]"
+      /process\s+(?:photos?|images?)\s+for\s+([A-Za-z0-9\s]+)/i.test(message) ||
+      // Vietnamese alternative: "Xử lý cho khách hàng [name]"
+      /(?:xử lý|x[ử]?\s*l[ý]?)\s+cho\s+(?:khách hàng\s+)?([A-Za-z0-9\s]+)/i.test(message)
+    );
     
-    // Generate AI response
-    const aiResponseText = await googleAiService.generateChatResponse(message);
+    console.log('isPhotoProcessingRequest:', isPhotoProcessingRequest);
+
+    if (isPhotoProcessingRequest) {
+      // Extract customer name from message using multiple patterns
+      let customerName = '';
+      
+      // Try English patterns first
+      let match = message.match(/process\s+(?:these\s+)?(?:photos?|images?)\s+for\s+(?:customer\s+)?([A-Za-z0-9\s]+)/i);
+      if (!match) {
+        match = message.match(/process\s+(?:photos?|images?)\s+for\s+([A-Za-z0-9\s]+)/i);
+      }
+      
+      // Try Vietnamese patterns
+      if (!match) {
+        match = message.match(/(?:xử lý|x[ử]?\s*l[ý]?)\s+(?:những\s+)?(?:ảnh|hình)\s+cho\s+(?:khách hàng\s+)?([A-Za-z0-9\s]+)/i);
+      }
+      if (!match) {
+        match = message.match(/(?:xử lý|x[ử]?\s*l[ý]?)\s+cho\s+(?:khách hàng\s+)?([A-Za-z0-9\s]+)/i);
+      }
+      
+      customerName = match ? match[1].trim() : `Customer_${Date.now()}`;
+      console.log('Extracted customer name:', customerName);
+
+      try {
+        // Execute complete workflow for photo processing
+        if (!userId) {
+          throw new Error('User ID is required');
+        }
+        const workflowResult = await executePhotoWorkflow(userId, imageIds, customerName);
+        
+        if (workflowResult.success) {
+          aiResponse = `✅ I've successfully processed your photos for ${customerName}!\n\n` +
+            `📊 Results:\n` +
+            `- Analyzed ${workflowResult.totalImages} photos from your Google Drive\n` +
+            `- Found ${workflowResult.matchingPhotos} photos matching the uploaded images\n` +
+            `- Selected the best ${workflowResult.bestPhotosCount} photos\n\n` +
+            `📁 Folder Structure:\n` +
+            `- Gogi (main folder)\n` +
+            `  └── ${workflowResult.folderName} (all ${workflowResult.matchingPhotos} matching photos)\n` +
+            `      └── Best (top ${workflowResult.bestPhotosCount} photos)\n\n` +
+            `🔗 View all photos here: ${workflowResult.publicLink}\n\n` +
+            `The customer folder contains ALL matching photos, with the highest quality ones also saved in the "Best" subfolder. ` +
+            `You can share this link with ${customerName}.`;
+        } else {
+          aiResponse = `❌ I encountered an issue while processing your photos: ${workflowResult.error}\n\n` +
+            `Please try again or contact support if the issue persists.`;
+        }
+      } catch (workflowError: any) {
+        console.error('Workflow error:', workflowError);
+        aiResponse = `I'm sorry, I couldn't complete the photo processing workflow. Error: ${workflowError.message}`;
+      }
+    } else {
+      // Generate regular AI response (includes case with images but no workflow trigger)
+      try {
+        // Get chat history for context
+        const chatHistory = await ChatMessage.find({ conversationId: conversation._id })
+          .sort({ createdAt: 'asc' })
+          .limit(10);
+        
+        const formattedHistory = chatHistory.map(msg => ({
+          role: (msg.userId === userId ? 'user' : 'model') as 'user' | 'model',
+          parts: msg.message || msg.response || ''
+        }));
+
+        // Create enhanced prompt if images are present
+        let enhancedMessage = message;
+        if (imageIds && imageIds.length > 0) {
+          const images = await Image.find({ _id: { $in: imageIds }, userId });
+          
+          enhancedMessage = `${message}\n\n[Context: User has uploaded ${imageIds.length} image${imageIds.length > 1 ? 's' : ''}. ` +
+            `You can describe what you see in these images and answer questions about them. ` +
+            `If the user wants to process these photos for a customer, they should say: "Process these photos for customer [name]" ` +
+            `or in Vietnamese: "Xử lý ảnh cho khách hàng [name]"]`;
+            
+          // Add image information to context
+          if (images.length > 0) {
+            const imageInfo = images.map(img => `Image: ${img.filename}, Status: ${img.status}`).join(', ');
+            enhancedMessage += `\n\nImage details: ${imageInfo}`;
+          }
+        }
+
+        console.log('Calling googleAiService.generateChatResponse...');
+        aiResponse = await googleAiService.generateChatResponse(enhancedMessage, formattedHistory);
+        console.log('AI Response generated successfully:', aiResponse.substring(0, 100) + '...');
+      } catch (aiError: any) {
+        console.error('AI generation error:', aiError);
+        aiResponse = 'I apologize, but I am unable to generate a response at the moment. Please try again later.';
+      }
+    }
 
     // Save bot response
+    console.log('Saving bot response...');
     const botMessage = new ChatMessage({
       conversationId: conversation._id,
-      userId, // Or a special bot ID
-      message, // Original user message
-      response: aiResponseText,
+      userId: 'bot',
+      message: message || 'Image processing',
+      response: aiResponse,
       platform,
+      type: 'text',
     });
-    
-    // Update conversation's last message
-    conversation.lastMessage = aiResponseText;
-    
-    await Promise.all([
-      userMessage.save(),
-      botMessage.save(),
-      conversation.save()
-    ]);
+    await botMessage.save();
+    console.log('Bot message saved successfully');
 
-    res.status(201).json({
+    // Update conversation's last message and timestamp
+    console.log('Updating conversation...');
+    conversation.lastMessage = aiResponse.substring(0, 100) + (aiResponse.length > 100 ? '...' : '');
+    conversation.updatedAt = new Date();
+    await conversation.save();
+    console.log('Conversation updated successfully');
+
+    const responseData = {
       success: true,
-      data: {
-        response: aiResponseText,
-        conversation,
+      conversation: {
+        _id: conversation._id,
+        title: conversation.title,
+        lastMessage: conversation.lastMessage,
+        updatedAt: conversation.updatedAt,
       },
-    });
+      response: aiResponse,
+    };
+
+    console.log('Sending response:', JSON.stringify(responseData, null, 2));
+    res.status(200).json(responseData);
 
   } catch (error: any) {
     console.error('Send chat message error:', error);
-    res.status(500).json({
-      success: false,
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', JSON.stringify(req.body, null, 2));
+    
+    // Try to get conversation if it exists
+    let conversation = null;
+    if (req.body.conversationId) {
+      try {
+        conversation = await Conversation.findById(req.body.conversationId);
+      } catch (dbError) {
+        console.error('Error fetching conversation:', dbError);
+      }
+    }
+    
+    // If no conversation found, create a temporary one for error response
+    if (!conversation) {
+      conversation = {
+        _id: 'temp-error-' + Date.now(),
+        title: 'Error - ' + (req.body.message || 'Message').substring(0, 30),
+        lastMessage: 'Error occurred',
+        updatedAt: new Date()
+      };
+    }
+    
+    res.status(500).json({ 
+      success: false, 
       error: error.message || 'Server error',
+      conversation: {
+        _id: conversation._id,
+        title: conversation.title,
+        lastMessage: conversation.lastMessage,
+        updatedAt: conversation.updatedAt
+      },
+      response: `❌ I'm sorry, I encountered an error while processing your message: ${error.message || 'Server error'}. Please try again.`
     });
   }
-}; 
+};
+
+// Helper function to execute the complete photo workflow
+async function executePhotoWorkflow(
+  userId: string, 
+  uploadedImageIds: string[], 
+  customerName: string
+): Promise<any> {
+  try {
+    // Step 1: Get uploaded images and extract face embeddings
+    const uploadedImages = await Image.find({ 
+      _id: { $in: uploadedImageIds },
+      userId 
+    });
+
+    if (uploadedImages.length === 0) {
+      return { success: false, error: 'No uploaded images found' };
+    }
+
+    // Step 2: Extract face embeddings from uploaded images
+    const uploadedEmbeddings: any[] = [];
+    for (const image of uploadedImages) {
+      const embedding = await deepFaceService.extractFaceEmbeddings(image.url);
+      if (embedding && embedding.embeddings.length > 0) {
+        uploadedEmbeddings.push({
+          imageId: image._id,
+          embeddings: embedding.embeddings,
+          faceCount: embedding.faceCount
+        });
+      }
+    }
+
+    if (uploadedEmbeddings.length === 0) {
+      return { success: false, error: 'No faces detected in uploaded images' };
+    }
+
+    // Step 3: Get Google Drive configuration from admin user
+    const adminUser = await User.findOne({ role: 'admin' });
+    if (!adminUser) {
+      return { success: false, error: 'Admin user not found. Please contact support.' };
+    }
+
+    const driveConfig = await DriveConfig.findOne({ userId: adminUser._id });
+    if (!driveConfig || !driveConfig.refreshToken) {
+      return { success: false, error: 'Google Drive not configured. Please connect your Google Drive account first.' };
+    }
+
+    // Step 4: Get images from configured folder in Google Drive
+    const configuredFolder = driveConfig.folderId || 'root';
+    console.log(`[executePhotoWorkflow] Scanning folder: ${configuredFolder}`);
+    
+    const driveImages = await googleDriveService.getImageFilesFromFolderRecursive(driveConfig, configuredFolder, 1000);
+    if (driveImages.length === 0) {
+      return { success: false, error: `No images found in configured folder (${configuredFolder}). Please check your folder configuration.` };
+    }
+
+    console.log(`[executePhotoWorkflow] Found ${driveImages.length} images in configured folder ${configuredFolder}`);
+
+    // Step 5: Compare embeddings and find ALL matching photos
+    const matchingPhotos: any[] = [];
+    const processedUrls = new Set<string>();
+    let processedCount = 0;
+
+    console.log(`[executePhotoWorkflow] Starting face comparison for ${driveImages.length} images...`);
+
+    for (const driveImage of driveImages) {
+      // Skip if already processed
+      if (processedUrls.has(driveImage.id)) continue;
+      processedUrls.add(driveImage.id);
+      processedCount++;
+
+      // Log progress every 10 images
+      if (processedCount % 10 === 0) {
+        console.log(`[executePhotoWorkflow] Processed ${processedCount}/${driveImages.length} images...`);
+      }
+
+      try {
+        // Get direct download URL for the drive image
+        const imageUrl = driveImage.thumbnailLink || 
+          `https://drive.google.com/uc?export=view&id=${driveImage.id}`;
+
+        // Extract embeddings from drive image
+        const driveEmbedding = await deepFaceService.extractFaceEmbeddings(imageUrl);
+        
+        if (driveEmbedding && driveEmbedding.embeddings.length > 0) {
+          // Compare with uploaded embeddings
+          let bestSimilarity = 0;
+          
+          for (const uploadedEmb of uploadedEmbeddings) {
+            for (const upEmb of uploadedEmb.embeddings) {
+              for (const driveEmb of driveEmbedding.embeddings) {
+                const comparison = await deepFaceService.compareFaces(
+                  upEmb,
+                  driveEmb
+                );
+                if (comparison.similarity > bestSimilarity) {
+                  bestSimilarity = comparison.similarity;
+                }
+              }
+            }
+          }
+
+          // If similarity is above threshold, add to matching photos
+          if (bestSimilarity > 0.6) { // 60% similarity threshold
+            // Get quality score for ranking
+            const qualityResult = await deepFaceService.analyzeImageQuality(imageUrl);
+            
+            matchingPhotos.push({
+              driveFile: driveImage,
+              similarity: bestSimilarity,
+              faceCount: driveEmbedding.faceCount,
+              qualityScore: qualityResult?.qualityScore || 0,
+              // Combined score for ranking: 70% similarity + 30% quality
+              combinedScore: (bestSimilarity * 0.7) + ((qualityResult?.qualityScore || 0) / 100 * 0.3)
+            });
+          }
+        }
+      } catch (embError) {
+        console.error(`Error processing drive image ${driveImage.id}:`, embError);
+        // Continue with other images
+      }
+    }
+
+    console.log(`[executePhotoWorkflow] Found ${matchingPhotos.length} matching photos from ${processedCount} processed images`);
+
+    // Step 6: Check if we have matching photos
+    if (matchingPhotos.length === 0) {
+      return { success: false, error: 'No matching photos found in your Google Drive' };
+    }
+
+    // Step 7: Create folder structure: Gogi -> Customer Name -> Best
+    console.log(`[executePhotoWorkflow] Creating folder structure for ${customerName}...`);
+    
+    // Find or create main Gogi folder
+    const gogiFolder = await googleDriveService.findOrCreateFolder(
+      driveConfig, 
+      'Gogi', 
+      driveConfig.folderId || 'root'
+    );
+    
+    // Create customer folder inside Gogi
+    const customerFolderName = `${customerName} - ${new Date().toISOString().split('T')[0]}`;
+    const customerFolder = await googleDriveService.createFolder(
+      driveConfig, 
+      customerFolderName, 
+      gogiFolder.id
+    );
+    
+    // Create Best subfolder inside customer folder
+    const bestFolder = await googleDriveService.createFolder(
+      driveConfig, 
+      'Best', 
+      customerFolder.id
+    );
+
+    // Step 8: Copy ALL matching photos to customer folder
+    console.log(`[executePhotoWorkflow] Copying ${matchingPhotos.length} matching photos to customer folder...`);
+    const copiedMatchingFiles = [];
+    let copyCount = 0;
+
+    for (const photo of matchingPhotos) {
+      try {
+        const copiedFile = await googleDriveService.copyFile(
+          driveConfig,
+          photo.driveFile.id,
+          customerFolder.id
+        );
+        copiedMatchingFiles.push({
+          ...copiedFile,
+          similarity: photo.similarity,
+          qualityScore: photo.qualityScore,
+          combinedScore: photo.combinedScore
+        });
+        copyCount++;
+        
+        // Log progress every 10 files
+        if (copyCount % 10 === 0) {
+          console.log(`[executePhotoWorkflow] Copied ${copyCount}/${matchingPhotos.length} matching photos...`);
+        }
+      } catch (copyError) {
+        console.error(`Error copying file ${photo.driveFile.id}:`, copyError);
+      }
+    }
+
+    // Step 9: Sort by combined score and select best 10 photos
+    console.log(`[executePhotoWorkflow] Selecting best photos based on similarity and quality...`);
+    matchingPhotos.sort((a, b) => b.combinedScore - a.combinedScore);
+    const bestPhotos = matchingPhotos.slice(0, Math.min(10, matchingPhotos.length));
+
+    // Step 10: Copy best photos to Best subfolder
+    console.log(`[executePhotoWorkflow] Copying ${bestPhotos.length} best photos to Best folder...`);
+    const copiedBestFiles = [];
+    
+    for (const photo of bestPhotos) {
+      try {
+        const copiedFile = await googleDriveService.copyFile(
+          driveConfig,
+          photo.driveFile.id,
+          bestFolder.id
+        );
+        copiedBestFiles.push(copiedFile);
+      } catch (copyError) {
+        console.error(`Error copying best file ${photo.driveFile.id}:`, copyError);
+      }
+    }
+
+    // Step 11: Set public permission for customer folder
+    const publicLink = await googleDriveService.setPublicPermission(
+      driveConfig,
+      customerFolder.id
+    );
+
+    console.log(`[executePhotoWorkflow] Workflow completed successfully!`);
+    console.log(`[executePhotoWorkflow] Total matching: ${matchingPhotos.length}, Best: ${copiedBestFiles.length}`);
+
+    return {
+      success: true,
+      totalImages: driveImages.length,
+      matchingPhotos: copiedMatchingFiles.length,
+      bestPhotosCount: copiedBestFiles.length,
+      folderName: customerFolder.name,
+      folderId: customerFolder.id,
+      publicLink,
+      folderStructure: {
+        gogiFolder: gogiFolder.name,
+        customerFolder: customerFolder.name,
+        bestFolder: bestFolder.name
+      }
+    };
+
+  } catch (error: any) {
+    console.error('Photo workflow error:', error);
+    return {
+      success: false,
+      error: error.message || 'Workflow execution failed'
+    };
+  }
+}
 
 // @desc    Update a message
 // @route   PUT /api/chatbot/messages/:id
