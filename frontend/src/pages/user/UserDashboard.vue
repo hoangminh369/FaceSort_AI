@@ -54,69 +54,7 @@
     </el-row>
     
     <!-- Upload Section -->
-    <el-card class="upload-card animate-card" :style="{ animationDelay: '0.4s' }">
-      <template #header>
-        <div class="card-header">
-          <span>Upload Photos</span>
-          <el-button v-if="uploadedFiles.length > 0" type="danger" size="small" plain @click="clearUploads">
-            Clear
-          </el-button>
-        </div>
-      </template>
-      <el-upload
-        class="upload-dragger"
-        drag
-        :action="uploadUrl"
-        multiple
-        :before-upload="beforeUpload"
-        :on-success="onUploadSuccess"
-        :on-error="onUploadError"
-        accept="image/*"
-        :show-file-list="false"
-      >
-        <div class="upload-content">
-          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-          <div class="el-upload__text">
-            Drop image files here or <em>click to upload</em>
-          </div>
-          <div class="el-upload__tip">
-            Supported formats: JPG, PNG, WebP (max 10MB each)
-          </div>
-        </div>
-      </el-upload>
-      
-      <div class="upload-actions" v-if="uploadedFiles.length > 0">
-        <h4 class="section-title">Recently Uploaded ({{ uploadedFiles.length }})</h4>
-        <div class="uploaded-files">
-          <transition-group name="file-fade">
-            <div v-for="file in uploadedFiles" :key="file.id" class="uploaded-file">
-              <img :src="file.thumbnailUrl || file.url" :alt="file.originalName" />
-              <div class="file-info">
-                <div class="file-name">{{ file.originalName }}</div>
-                <div class="file-status">
-                  <el-tag :type="getStatusColor(file.status)" size="small" effect="light">
-                    {{ file.status }}
-                  </el-tag>
-                </div>
-              </div>
-              <div class="remove-file" @click.stop="removeFile(file.id)">
-                <el-icon :size="16"><Close /></el-icon>
-              </div>
-            </div>
-          </transition-group>
-        </div>
-        
-        <el-button 
-          type="primary" 
-          @click="processImages" 
-          :loading="processing"
-          class="process-button pulse-on-hover"
-        >
-          <el-icon><Magic-stick /></el-icon>
-          Process with AI
-        </el-button>
-      </div>
-    </el-card>
+    
     
     <!-- Recent Activity -->
     <el-row :gutter="24">
@@ -200,28 +138,6 @@
           </div>
         </el-card>
         
-        <el-card class="tips-card animate-card" :style="{ animationDelay: '0.7s' }">
-          <template #header>
-            <div class="card-header">
-              <span>Quick Tips</span>
-            </div>
-          </template>
-          
-          <div class="tips-list">
-            <div class="tip-item">
-              <div class="tip-icon">💡</div>
-              <div class="tip-content">Upload multiple photos at once for batch processing</div>
-            </div>
-            <div class="tip-item">
-              <div class="tip-icon">🔍</div>
-              <div class="tip-content">Photos with clear faces get better quality scores</div>
-            </div>
-            <div class="tip-item">
-              <div class="tip-icon">💬</div>
-              <div class="tip-content">Use the chatbot to request specific photo operations</div>
-            </div>
-          </div>
-        </el-card>
       </el-col>
     </el-row>
     

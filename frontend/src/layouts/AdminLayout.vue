@@ -24,10 +24,7 @@
           <span>User Management</span>
         </el-menu-item>
         
-        <el-menu-item index="/admin/workflows">
-          <el-icon><Setting /></el-icon>
-          <span>Workflows</span>
-        </el-menu-item>
+       
         
         <el-menu-item index="/admin/config">
           <el-icon><Tools /></el-icon>

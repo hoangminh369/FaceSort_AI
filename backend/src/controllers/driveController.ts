@@ -430,12 +430,12 @@ export const setPublicPermission = async (req: Request, res: Response) => {
   }
 };
 
-// @desc    Get all image files from Google Drive
+// @desc    Get image files from Google Drive
 // @route   GET /api/drive/images
 // @access  Private
 export const getAllImages = async (req: Request, res: Response) => {
   try {
-    const { maxResults = 1000 } = req.query;
+    const { maxResults = 1000, folderId, recursive = 'false' } = req.query;
     
     const driveConfig = await DriveConfig.findOne({ userId: req.user?.id });
     
@@ -446,14 +446,38 @@ export const getAllImages = async (req: Request, res: Response) => {
       });
     }
     
-    const images = await googleDriveService.getAllImageFiles(
-      driveConfig,
-      Number(maxResults)
-    );
+    let images;
+    
+    if (folderId) {
+      // Get images from specific folder
+      if (recursive === 'true') {
+        images = await googleDriveService.getImageFilesFromFolderRecursive(
+          driveConfig,
+          folderId as string,
+          Number(maxResults)
+        );
+      } else {
+        images = await googleDriveService.getImageFilesFromFolder(
+          driveConfig,
+          folderId as string,
+          Number(maxResults)
+        );
+      }
+    } else {
+      // Get images from configured folder by default
+      const configuredFolder = driveConfig.folderId || 'root';
+      images = await googleDriveService.getImageFilesFromFolderRecursive(
+        driveConfig,
+        configuredFolder,
+        Number(maxResults)
+      );
+    }
     
     res.status(200).json({
       success: true,
       data: images,
+      folder: folderId || driveConfig.folderId || 'root',
+      recursive: recursive === 'true'
     });
   } catch (error: any) {
     console.error('Error listing images:', error);

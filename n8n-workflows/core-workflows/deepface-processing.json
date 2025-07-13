@@ -105,27 +105,21 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.DEEPFACE_API_URL }}/analyze",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "n8n-nodes-base.httpBasicAuth",
+        "url": "=http://localhost:5000/api/images/analyze-face",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-api-key",
-              "value": "={{ $env.DEEPFACE_API_KEY }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"img_url\": \"{{ $json.url }}\", \"actions\": [\"detection\", \"emotions\", \"quality\"] }"
+        "jsonBody": "={ \"imageUrl\": \"{{ $json.url }}\", \"imageId\": \"{{ $json.id }}\", \"actions\": [\"age\", \"gender\", \"emotion\", \"race\"] }"
       },
-      "name": "Call DeepFace API",
+      "name": "Call Local DeepFace Service",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
       "position": [
@@ -154,7 +148,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Process face detection results\nconst inputItem = $input.item;\nconst imageData = $input.first(1)[0].json;\nconst analysisResult = inputItem.json;\n\n// Extract face data\nconst faces = analysisResult.faces || [];\nconst faceCount = faces.length;\n\n// Calculate overall quality score\nlet overallQualityScore = 0;\nif (faceCount > 0) {\n  const totalQuality = faces.reduce((sum, face) => {\n    return sum + (face.quality_score || 0);\n  }, 0);\n  overallQualityScore = totalQuality / faceCount;\n}\n\n// Map face data to database format\nconst faceAnalyses = faces.map((face, index) => {\n  return {\n    imageId: imageData.id,\n    faceBox: {\n      x: face.box.left,\n      y: face.box.top,\n      width: face.box.width,\n      height: face.box.height\n    },\n    confidence: face.confidence,\n    qualityScore: face.quality_score || 0,\n    emotions: face.emotions || {\n      happy: 0,\n      sad: 0,\n      angry: 0,\n      surprised: 0,\n      neutral: 0\n    }\n  };\n});\n\nreturn [\n  {\n    json: {\n      id: imageData.id,\n      faceDetected: faceCount > 0,\n      faceCount: faceCount,\n      qualityScore: overallQualityScore,\n      status: \"processed\",\n      faces: faceAnalyses\n    }\n  }\n];"
+        "functionCode": "// Process face detection results\nconst inputItem = $input.item;\nconst imageData = $input.first(1)[0].json;\nconst analysisResult = inputItem.json;\n\n// Extract face data from local DeepFace service\nconst faces = analysisResult.analyses || [];\nconst faceCount = faces.length;\n\n// Calculate overall quality score\nlet overallQualityScore = analysisResult.qualityScore || 0;\nif (faceCount > 0 && overallQualityScore === 0) {\n  // If no quality score from analysis, use a default based on face count\n  overallQualityScore = Math.min(80 + (faceCount * 5), 100);\n}\n\n// Map face data to database format\nconst faceAnalyses = faces.map((face, index) => {\n  return {\n    imageId: imageData.id,\n    faceBox: face.region || {\n      x: 0,\n      y: 0,\n      width: 0,\n      height: 0\n    },\n    confidence: 0.9, // Default confidence for local processing\n    qualityScore: overallQualityScore,\n    age: face.age,\n    gender: face.gender,\n    emotions: face.emotion || {\n      happy: 0,\n      sad: 0,\n      angry: 0,\n      surprised: 0,\n      neutral: 0\n    },\n    race: face.race\n  };\n});\n\nreturn [\n  {\n    json: {\n      id: imageData.id,\n      faceDetected: faceCount > 0,\n      faceCount: faceCount,\n      qualityScore: overallQualityScore,\n      status: \"processed\",\n      faces: faceAnalyses\n    }\n  }\n];"
       },
       "name": "Process Analysis Results",
       "type": "n8n-nodes-base.function",
@@ -273,7 +267,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Log processing results\nconst items = $input.all();\nconst successfulItems = items.filter(item => item.json.status === 'processed');\nconst errorItems = items.filter(item => item.json.status === 'error');\n\nreturn [\n  {\n    json: {\n      success: true,\n      message: `DeepFace processing completed at ${new Date().toISOString()}`,\n      processed: successfulItems.length,\n      errors: errorItems.length,\n      totalFaces: successfulItems.reduce((sum, item) => sum + (item.json.faceCount || 0), 0)\n    }\n  }\n];"
+        "functionCode": "// Log processing results\nconst items = $input.all();\nconst successfulItems = items.filter(item => item.json.status === 'processed');\nconst errorItems = items.filter(item => item.json.status === 'error');\n\nreturn [\n  {\n    json: {\n      success: true,\n      message: `Local DeepFace processing completed at ${new Date().toISOString()}`,\n      processed: successfulItems.length,\n      errors: errorItems.length,\n      totalFaces: successfulItems.reduce((sum, item) => sum + (item.json.faceCount || 0), 0)\n    }\n  }\n];"
       },
       "name": "Log Processing Results",
       "type": "n8n-nodes-base.function",
@@ -344,14 +338,14 @@
       "main": [
         [
           {
-            "node": "Call DeepFace API",
+            "node": "Call Local DeepFace Service",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Call DeepFace API": {
+    "Call Local DeepFace Service": {
       "main": [
         [
           {

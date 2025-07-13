@@ -28,10 +28,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get image URL from input or request body\nlet imageUrl;\n\nif ($input.first().json.imageUrl) {\n  imageUrl = $input.first().json.imageUrl;\n} else if ($input.first().json.body?.imageUrl) {\n  imageUrl = $input.first().json.body.imageUrl;\n} else {\n  return [\n    {\n      json: {\n        success: false,\n        error: 'No image URL provided'\n      }\n    }\n  ];\n}\n\nreturn [\n  {\n    json: {\n      imageUrl,\n      actions: ['detection']\n    }\n  }\n];"
+        "functionCode": "// Extract image URL from input data\nconst item = $input.first();\nconst imageUrl = item.json.imageUrl || item.json.url;\nconst actions = item.json.actions || ['age', 'gender', 'emotion', 'race'];\n\nif (!imageUrl) {\n  throw new Error('Image URL is required');\n}\n\nreturn [\n  {\n    json: {\n      imageUrl: imageUrl,\n      actions: actions\n    }\n  }\n];"
       },
       "name": "Extract Image URL",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
         450,
@@ -41,27 +41,21 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.DEEPFACE_API_URL }}/analyze",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "n8n-nodes-base.httpBasicAuth",
+        "url": "=http://localhost:5000/api/images/analyze-face",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-api-key",
-              "value": "={{ $env.DEEPFACE_API_KEY }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"img_url\": \"{{ $json.imageUrl }}\", \"actions\": {{ $json.actions }} }"
+        "jsonBody": "={ \"imageUrl\": \"{{ $json.imageUrl }}\", \"actions\": {{ $json.actions }} }"
       },
-      "name": "Call DeepFace API",
+      "name": "Call Local DeepFace Service",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
       "position": [
@@ -90,22 +84,22 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process DeepFace API response\nconst response = $input.first().json;\n\nconst faces = response.faces || [];\nconst faceCount = faces.length;\n\n// Format faces data for easier use\nconst processedFaces = faces.map((face, index) => {\n  return {\n    index,\n    box: {\n      left: face.box.left,\n      top: face.box.top,\n      width: face.box.width,\n      height: face.box.height\n    },\n    confidence: face.confidence,\n    hasFace: true\n  };\n});\n\nreturn [\n  {\n    json: {\n      success: true,\n      imageUrl: $input.first().json.imageUrl,\n      faceCount,\n      faces: processedFaces\n    }\n  }\n];"
+        "functionCode": "// Process successful face detection results\nconst results = $input.item.json;\n\nreturn [\n  {\n    json: {\n      success: true,\n      faceCount: results.faceCount || 0,\n      analyses: results.analyses || [],\n      qualityScore: results.qualityScore || 0,\n      embeddings: results.embeddings || [],\n      processedAt: new Date().toISOString()\n    }\n  }\n];"
       },
       "name": "Process Results",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
         1050,
-        300
+        350
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Handle error in face detection\nreturn [\n  {\n    json: {\n      success: false,\n      imageUrl: $input.first().json.imageUrl,\n      error: $input.first().json.error || 'Face detection failed',\n      faceCount: 0,\n      faces: []\n    }\n  }\n];"
+        "functionCode": "// Handle face detection errors\nconst error = $input.item.json;\n\nreturn [\n  {\n    json: {\n      success: false,\n      error: error.error || 'Face detection failed',\n      details: error.details || 'Unknown error',\n      processedAt: new Date().toISOString()\n    }\n  }\n];"
       },
       "name": "Handle Error",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
         1050,
@@ -153,14 +147,14 @@
       "main": [
         [
           {
-            "node": "Call DeepFace API",
+            "node": "Call Local DeepFace Service",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Call DeepFace API": {
+    "Call Local DeepFace Service": {
       "main": [
         [
           {

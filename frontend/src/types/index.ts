@@ -79,8 +79,16 @@ export interface WorkflowExecution {
 }
 
 // Chatbot types
-export interface ChatMessage {
+export interface Attachment {
   id: string
+  url: string
+  type: 'image' | 'file'
+  name?: string
+}
+
+export interface ChatMessage {
+  _id: string
+  conversationId?: string
   userId: string
   message: string
   response?: string
@@ -88,6 +96,7 @@ export interface ChatMessage {
   type: 'text' | 'image' | 'notification'
   imageUrl?: string
   folderLink?: string
+  attachments?: Attachment[]
   createdAt: string
 }
 

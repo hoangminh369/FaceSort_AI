@@ -57,9 +57,8 @@ GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id
 
-# DeepFace API
-DEEPFACE_API_URL=http://localhost:5000
-DEEPFACE_API_KEY=your_api_key
+# DeepFace Local Configuration (No API key required)
+# DeepFace is now integrated locally via Python scripts
 
 # Chatbot Integration
 ZALO_ACCESS_TOKEN=your_zalo_token

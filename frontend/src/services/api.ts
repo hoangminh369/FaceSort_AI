@@ -22,7 +22,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
-      timeout: 30000,
+      timeout: 300000, // 5 minutes timeout for deepface processing
       headers: {
         'Content-Type': 'application/json'
       }
@@ -188,10 +188,20 @@ class ApiClient {
   async sendChatbotMessage(
     message: string,
     platform: 'web' | 'zalo' | 'facebook',
-    conversationId: string | null
-  ): Promise<{ response: string, conversation: Conversation }> {
-    const response = await this.post<{ response: string, conversation: Conversation }>('/chatbot/send', { message, platform, conversationId });
-    return response.data!;
+    conversationId: string | null,
+    imageIds?: string[]
+  ): Promise<{ response: string; conversation: Conversation }> {
+    console.log('sendChatbotMessage called with:', { message, platform, conversationId, imageIds });
+    const response = await this.post<{ response: string; conversation: Conversation }>('/chatbot/send', {
+      message,
+      platform,
+      conversationId,
+      imageIds,
+    })
+    console.log('sendChatbotMessage response:', response);
+    // response.data is already unwrapped by interceptor
+    // Backend returns the data directly, not wrapped in ApiResponse
+    return response as any
   }
 
   // New methods for message and conversation management
@@ -216,33 +226,19 @@ class ApiClient {
   }
 
   async evaluateImages(imageIds: string[]): Promise<any> {
-    const response = await this.post('/chatbot/evaluate-images', { imageIds })
-    return response
+    return this.post('/chatbot/evaluate-images', { imageIds })
   }
 
   async compareImages(sourceImageId: string, targetImageIds: string[]): Promise<any> {
-    const response = await this.post('/chatbot/compare-images', { 
-      sourceImageId, 
-      targetImageIds 
-    })
-    return response
+    return this.post('/chatbot/compare-images', { sourceImageId, targetImageIds })
   }
 
   async selectBestImages(imageIds: string[], customerName: string, maxImages: number = 5): Promise<any> {
-    const response = await this.post('/chatbot/select-best-images', {
-      imageIds,
-      customerName,
-      maxImages
-    })
-    return response
+    return this.post('/chatbot/select-best-images', { imageIds, customerName, maxImages })
   }
 
   async processDriveImages(customerName: string, folderPath?: string): Promise<any> {
-    const response = await this.post('/chatbot/process-drive-images', {
-      customerName,
-      folderPath
-    })
-    return response
+    return this.post('/chatbot/process-drive-images', { customerName, folderPath })
   }
 
   async getChatbotConfig(): Promise<ChatbotConfig> {

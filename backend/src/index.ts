@@ -24,7 +24,31 @@ connectDB().then(() => {
 });
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  config.frontendBaseUrl,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error('CORS policy: This origin is not allowed'), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: 'GET,POST,PUT,DELETE,OPTIONS',
+  allowedHeaders: 'Content-Type,Authorization'
+}));
+
+// Handle preflight requests quickly
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -44,9 +68,34 @@ app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/system', systemRoutes);
 
-// Health check endpoint
+// Import deepface service for health check
+import deepFaceService from './services/deepFaceService';
+
+// Health check endpoints (public access)
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
+});
+
+app.get('/deepface-health', async (req: Request, res: Response) => {
+  try {
+    const healthCheck = await deepFaceService.checkPythonEnvironment();
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        isReady: healthCheck.isReady,
+        error: healthCheck.error,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('DeepFace health check error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Health check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // Handle 404 errors for routes that don't exist
