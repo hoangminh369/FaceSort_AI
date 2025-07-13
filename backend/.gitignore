@@ -30,4 +30,5 @@ coverage
 *.tsbuildinfo
 
 .venv
+python-env
 *.env

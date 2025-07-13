@@ -28,6 +28,14 @@ UPLOAD_DIR=uploads
 GOOGLE_GENAI_API_KEY=your_gemini_api_key_here
 # Optional: specify model (default gemini-1.5-pro)
 GEMINI_MODEL_ID=gemini-1.5-pro
+
+# DeepFace Local Configuration (No external API required)
+DEEPFACE_PYTHON_PATH=python
+DEEPFACE_MODEL=VGG-Face
+DEEPFACE_DETECTOR=opencv
+DEEPFACE_METRIC=cosine
+DEEPFACE_QUALITY_THRESHOLD=80
+DEEPFACE_SIMILARITY_THRESHOLD=0.6
 ```
 
 3. Set up Google Drive API:

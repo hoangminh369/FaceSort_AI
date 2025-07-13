@@ -18,6 +18,16 @@ const config = {
       chatbotResponse: process.env.N8N_CHATBOT_RESPONSE_ID || 'chatbot-response'
     }
   },
+  // DeepFace local configuration
+  deepface: {
+    pythonPath: 'py', // Force use 'py' command
+    model: process.env.DEEPFACE_MODEL || 'VGG-Face',
+    detector: 'opencv', // Force use opencv detector
+    metric: process.env.DEEPFACE_METRIC || 'cosine',
+    enableGpu: process.env.DEEPFACE_ENABLE_GPU === 'true',
+    qualityThreshold: parseInt(process.env.DEEPFACE_QUALITY_THRESHOLD || '80'),
+    similarityThreshold: parseFloat(process.env.DEEPFACE_SIMILARITY_THRESHOLD || '0.6')
+  },
   geminiModelId: process.env.GEMINI_MODEL_ID || 'gemini-1.5-pro',
   googleDrive: {
     clientId: process.env.GOOGLE_DRIVE_CLIENT_ID || '',
