@@ -146,6 +146,33 @@
           </el-select>
         </el-form-item>
         
+        <el-form-item label="Update Password" v-if="editingUser">
+          <el-switch v-model="showPasswordField" />
+        </el-form-item>
+
+        <el-form-item label="New Password" prop="password" v-if="editingUser && showPasswordField">
+          <el-input 
+            v-model="userForm.password" 
+            type="password"
+            placeholder="Enter new password"
+            class="input-animate" 
+            show-password
+            @focus="handleFocus"
+            @blur="handleBlur"
+          />
+          <div class="password-strength-hint" v-if="userForm.password">
+            <div 
+              class="strength-indicator" 
+              :class="{
+                'weak': passwordStrength === 'weak',
+                'medium': passwordStrength === 'medium',
+                'strong': passwordStrength === 'strong'
+              }"
+            ></div>
+            <span class="strength-text">{{ passwordStrengthMessage }}</span>
+          </div>
+        </el-form-item>
+
         <el-form-item label="Password" prop="password" v-if="!editingUser">
           <el-input 
             v-model="userForm.password" 
@@ -156,6 +183,17 @@
             @focus="handleFocus"
             @blur="handleBlur"
           />
+          <div class="password-strength-hint" v-if="userForm.password">
+            <div 
+              class="strength-indicator" 
+              :class="{
+                'weak': passwordStrength === 'weak',
+                'medium': passwordStrength === 'medium',
+                'strong': passwordStrength === 'strong'
+              }"
+            ></div>
+            <span class="strength-text">{{ passwordStrengthMessage }}</span>
+          </div>
         </el-form-item>
       </el-form>
       
@@ -181,6 +219,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { userApi } from '@/services/api'
 import type { User } from '@/types'
 import type { FormInstance, FormRules } from 'element-plus'
+import { UserFilled, Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
 
 const users = ref<User[]>([])
 const loading = ref(false)
@@ -189,6 +228,8 @@ const editingUser = ref<User | null>(null)
 const searchQuery = ref('')
 const roleFilter = ref('')
 const userFormRef = ref<FormInstance>()
+const currentPage = ref(1)
+const pageSize = ref(100)
 
 const userForm = reactive({
   username: '',
@@ -259,40 +300,17 @@ const handleBlur = (event: Event) => {
 const loadUsers = async () => {
   loading.value = true
   try {
-    const response = await userApi.getUsers(1, 100)
+    const response = await userApi.getUsers(currentPage.value, pageSize.value)
     users.value = response.data
-  } catch (error) {
-    // Use demo data if API fails
-    users.value = [
-      {
-        id: '1',
-        username: 'admin',
-        email: 'admin@example.com',
-        role: 'admin',
-        createdAt: '2024-01-15',
-        updatedAt: '2024-01-15'
-      },
-      {
-        id: '2',
-        username: 'user1',
-        email: 'user1@example.com',
-        role: 'user',
-        createdAt: '2024-01-16',
-        updatedAt: '2024-01-16'
-      },
-      {
-        id: '3',
-        username: 'user2',
-        email: 'user2@example.com',
-        role: 'user',
-        createdAt: '2024-02-10',
-        updatedAt: '2024-02-10'
-      }
-    ]
+  } catch (error: any) {
+    ElMessage({
+      message: `Failed to load users: ${error.message || 'Unknown error'}`,
+      type: 'error',
+      duration: 5000
+    })
+    users.value = []
   } finally {
-    setTimeout(() => {
       loading.value = false
-    }, 500)
   }
 }
 
@@ -301,8 +319,43 @@ const editUser = (user: User) => {
   userForm.username = user.username
   userForm.email = user.email
   userForm.role = user.role
+  userForm.password = ''
+  showPasswordField.value = false
   showCreateDialog.value = true
 }
+
+const showPasswordField = ref(false);
+
+const passwordStrength = computed(() => {
+  const password = userForm.password;
+  if (!password) return '';
+  
+  // Check password strength
+  let score = 0;
+  
+  // Length check
+  if (password.length >= 8) score += 1;
+  if (password.length >= 10) score += 1;
+  
+  // Complexity checks
+  if (/[A-Z]/.test(password)) score += 1; // Has uppercase
+  if (/[a-z]/.test(password)) score += 1; // Has lowercase
+  if (/[0-9]/.test(password)) score += 1; // Has numbers
+  if (/[^A-Za-z0-9]/.test(password)) score += 1; // Has special chars
+  
+  if (score <= 2) return 'weak';
+  if (score <= 4) return 'medium';
+  return 'strong';
+});
+
+const passwordStrengthMessage = computed(() => {
+  switch(passwordStrength.value) {
+    case 'weak': return 'Weak password';
+    case 'medium': return 'Medium strength';
+    case 'strong': return 'Strong password';
+    default: return '';
+  }
+});
 
 const handleSaveUser = async () => {
   if (!userFormRef.value) return
@@ -310,16 +363,57 @@ const handleSaveUser = async () => {
   await userFormRef.value.validate(async (valid) => {
     if (!valid) return
     
-    try {
+    // Add a password strength check for new users
+    if (!editingUser.value && passwordStrength.value === 'weak') {
+      ElMessageBox.confirm(
+        'The password you entered is weak. Continue anyway?',
+        'Password Strength Warning',
+        {
+          confirmButtonText: 'Yes, continue',
+          cancelButtonText: 'No, I\'ll improve it',
+          type: 'warning'
+        }
+      ).then(async () => {
+        await saveUserToDatabase();
+      }).catch(() => {
+        // User chose to improve password
+        return;
+      });
+    } else {
+      await saveUserToDatabase();
+    }
+  })
+}
+
+const saveUserToDatabase = async () => {
+  try {
+    loading.value = true; // Add loading state
+    
       if (editingUser.value) {
-        await userApi.updateUser(editingUser.value.id, userForm)
+      const updateData: Partial<User> = {
+        username: userForm.username,
+        email: userForm.email,
+        role: userForm.role
+      };
+      
+      // Only include password if it was changed
+      if (showPasswordField.value && userForm.password) {
+        updateData.password = userForm.password;
+      }
+      
+      await userApi.updateUser(editingUser.value.id, updateData)
         ElMessage({
           message: 'User updated successfully',
           type: 'success',
           duration: 3000
         })
       } else {
-        await userApi.createUser(userForm)
+      await userApi.createUser({
+        username: userForm.username,
+        email: userForm.email,
+        role: userForm.role,
+        password: userForm.password
+      })
         ElMessage({
           message: 'User created successfully',
           type: 'success',
@@ -331,13 +425,20 @@ const handleSaveUser = async () => {
       resetForm()
       loadUsers()
     } catch (error: any) {
+    let errorMessage = error.message || 'Operation failed';
+    // Try to extract more specific error messages from backend
+    if (error.message && error.message.includes('User already exists')) {
+      errorMessage = 'A user with this username or email already exists';
+    }
+    
       ElMessage({
-        message: error.message || 'Operation failed',
+      message: errorMessage,
         type: 'error',
         duration: 5000
       })
+  } finally {
+    loading.value = false;
     }
-  })
 }
 
 const deleteUser = async (userId: string) => {
@@ -351,6 +452,8 @@ const deleteUser = async (userId: string) => {
         type: 'warning'
       }
     )
+    
+    try {
     await userApi.deleteUser(userId)
     ElMessage({
       message: 'User deleted successfully',
@@ -359,13 +462,14 @@ const deleteUser = async (userId: string) => {
     })
     loadUsers()
   } catch (error: any) {
-    if (error !== 'cancel') {
       ElMessage({
-        message: error.message || 'Delete failed',
+        message: `Delete failed: ${error.message || 'Unknown error'}`,
         type: 'error',
         duration: 5000
       })
     }
+  } catch (error) {
+    // User canceled the operation
   }
 }
 
@@ -380,6 +484,7 @@ const resetForm = () => {
     role: 'user',
     password: ''
   })
+  showPasswordField.value = false
 }
 
 onMounted(() => {
@@ -598,6 +703,52 @@ onMounted(() => {
   color: #333;
   border-bottom: 1px solid #f0f0f0;
   padding: 16px 20px;
+}
+
+.password-strength-hint {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.strength-indicator {
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background-color: #e0e0e0;
+  position: relative;
+  overflow: hidden;
+}
+
+.strength-indicator::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.strength-indicator.weak::after {
+  width: 30%;
+  background-color: #f56c6c;
+}
+
+.strength-indicator.medium::after {
+  width: 60%;
+  background-color: #e6a23c;
+}
+
+.strength-indicator.strong::after {
+  width: 100%;
+  background-color: #67c23a;
+}
+
+.strength-text {
+  font-size: 12px;
+  color: #909399;
 }
 
 @media (max-width: 768px) {

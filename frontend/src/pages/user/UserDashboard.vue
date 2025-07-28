@@ -1,63 +1,28 @@
 <template>
   <div class="user-dashboard">
     <div class="dashboard-header fade-in-down">
-      <h1>Welcome back, {{ user?.username }}!</h1>
-      <p>Manage your photos with AI-powered face detection</p>
+      <el-avatar :size="56" class="user-avatar-header">{{ user?.username?.charAt(0).toUpperCase() }}</el-avatar>
+      <div class="header-info">
+        <h1>Welcome, {{ user?.username }}!</h1>
+        <p>Manage your photos with AI-powered face detection</p>
+      </div>
     </div>
-    
-    <!-- Stats Overview -->
     <el-row :gutter="24" class="stats-row">
-      <el-col :span="8">
-        <el-card class="stat-card animate-card" :style="{ animationDelay: '0.1s' }">
+      <el-col :span="8" v-for="(stat, idx) in statCards" :key="stat.label">
+        <el-card class="stat-card animate-card" :style="{ animationDelay: `${0.1 + idx * 0.1}s`, background: stat.bg }">
           <div class="stat-content">
             <div class="stat-icon">
-              <el-icon :size="32"><Picture /></el-icon>
+              <el-icon :size="36"><component :is="stat.icon" /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-number">{{ userStats.totalImages }}</div>
-              <div class="stat-label">Total Photos</div>
+              <div class="stat-number">{{ stat.value }}</div>
+              <div class="stat-label">{{ stat.label }}</div>
             </div>
           </div>
-          <div class="stat-progress" :style="`width: 100%; background: linear-gradient(90deg, #e6f7ff, #1890ff)`"></div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="8">
-        <el-card class="stat-card animate-card" :style="{ animationDelay: '0.2s' }">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon :size="32"><Check /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ userStats.processedImages }}</div>
-              <div class="stat-label">Processed</div>
-            </div>
-          </div>
-          <div class="stat-progress" :style="`width: ${Math.min(userStats.processedImages / userStats.totalImages * 100 || 0, 100)}%; background: linear-gradient(90deg, #f6ffed, #52c41a)`"></div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="8">
-        <el-card class="stat-card animate-card" :style="{ animationDelay: '0.3s' }">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon :size="32"><User /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ userStats.facesDetected }}</div>
-              <div class="stat-label">Faces Found</div>
-            </div>
-          </div>
-          <div class="stat-progress" :style="`width: 100%; background: linear-gradient(90deg, #fff0f6, #eb2f96)`"></div>
         </el-card>
       </el-col>
     </el-row>
-    
-    <!-- Upload Section -->
-    
-    
-    <!-- Recent Activity -->
-    <el-row :gutter="24">
+    <el-row :gutter="24" class="main-row">
       <el-col :span="16">
         <el-card class="recent-photos-card animate-card" :style="{ animationDelay: '0.5s' }">
           <template #header>
@@ -65,15 +30,14 @@
               <span>Recent Photos</span>
               <el-button type="primary" text @click="$router.push('/user/gallery')">
                 View All
-                <el-icon class="el-icon--right"><Arrow-right /></el-icon>
+                <el-icon class="el-icon--right"><ArrowRight /></el-icon>
               </el-button>
             </div>
           </template>
-          
-          <div class="recent-photos">
-            <div v-for="image in recentImages" :key="image.id" class="photo-item">
+          <div class="recent-photos" v-loading="loadingImages">
+            <div v-for="image in recentImages" :key="image.id" class="photo-item" @click="openImageDetail(image)">
               <div class="photo-container">
-                <img :src="image.thumbnailUrl || image.url" :alt="image.originalName" loading="lazy" />
+                <img :src="getImageUrl(image)" :alt="image.originalName" loading="lazy" @error="onImageError" />
                 <div class="photo-overlay">
                   <div class="photo-info">
                     <div class="photo-name">{{ image.originalName }}</div>
@@ -84,23 +48,27 @@
                       <el-tag v-if="image.qualityScore" type="info" size="small" effect="light">
                         {{ image.qualityScore }}% quality
                       </el-tag>
+                      <el-tag :type="getStatusColor(image.status)" size="small" effect="light">
+                        {{ image.status }}
+                      </el-tag>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          
-          <div v-if="recentImages.length === 0" class="empty-photos">
+          <div v-if="recentImages.length === 0 && !loadingImages" class="empty-photos">
             <el-empty description="No photos yet">
               <template #description>
-                <p>Upload your first photos to get started</p>
+                <p>Start by uploading your first photos in the <b>Gallery</b>!</p>
               </template>
+              <el-button type="primary" @click="$router.push('/user/gallery')">
+                Go to Gallery
+              </el-button>
             </el-empty>
           </div>
         </el-card>
       </el-col>
-      
       <el-col :span="8">
         <el-card header="Processing Status" class="status-card animate-card" :style="{ animationDelay: '0.6s' }">
           <div class="processing-status">
@@ -117,15 +85,15 @@
               <div class="status-value">{{ processingQueue.estimatedTime || 'N/A' }}</div>
             </div>
           </div>
-          
           <el-progress 
             v-if="processingQueue.progress > 0"
             :percentage="processingQueue.progress"
             :status="processingQueue.progress === 100 ? 'success' : 'active'"
             :stroke-width="12"
             class="progress-bar"
+            :color="customProgressColor"
+            :indeterminate="processingQueue.progress > 0 && processingQueue.progress < 100"
           />
-          
           <div class="quick-actions">
             <el-button type="primary" @click="$router.push('/user/chatbot')" class="action-btn pulse-on-hover">
               <el-icon><ChatLineRound /></el-icon>
@@ -135,13 +103,14 @@
               <el-icon><Picture /></el-icon>
               View Gallery
             </el-button>
+            <el-button v-if="userStats.totalImages > userStats.processedImages" type="warning" @click="processExistingImages" :loading="processingQueue.progress > 0" class="action-btn pulse-on-hover">
+              <el-icon><MagicStick /></el-icon>
+              Process All
+            </el-button>
           </div>
         </el-card>
-        
       </el-col>
     </el-row>
-    
-    <!-- Processing notification -->
     <div class="processing-toast" :class="{ 'show-toast': showProcessingToast }">
       <div class="toast-content">
         <div class="toast-icon">
@@ -153,24 +122,54 @@
         </div>
       </div>
     </div>
+    <el-dialog
+      v-model="imageDetailVisible"
+      :title="selectedImage?.originalName"
+      width="60%"
+      center
+      class="image-detail-dialog"
+      destroy-on-close
+      :modal-append-to-body="false"
+      :show-close="true"
+      :close-on-click-modal="true"
+      :before-close="() => { imageDetailVisible = false }"
+      transition="zoom-in-center"
+    >
+      <div v-if="selectedImage" class="image-detail-content">
+        <div class="detail-image">
+          <img :src="getImageUrl(selectedImage)" :alt="selectedImage.originalName" />
+        </div>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="Status">
+            <el-tag :type="getStatusColor(selectedImage.status)" effect="light">
+              {{ selectedImage.status }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="Size">
+            {{ formatFileSize(selectedImage.size) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Faces">
+            {{ selectedImage.faceDetected ? selectedImage.faceCount : 'None' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Quality">
+            {{ selectedImage.qualityScore ? selectedImage.qualityScore + '%' : 'N/A' }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { imageApi } from '@/services/api'
-import { Picture, User, Check, ArrowRight, UploadFilled, Close, ChatLineRound, Loading } from '@element-plus/icons-vue'
+import { Picture, User, Check, ArrowRight, ChatLineRound, Loading, MagicStick } from '@element-plus/icons-vue'
 import type { ImageFile } from '@/types'
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
-
-const uploadUrl = ref('http://localhost:5678/api/images/upload')
-const processing = ref(false)
-const showProcessingToast = ref(false)
-const processingToastMessage = ref('')
 
 const userStats = ref({
   totalImages: 0,
@@ -178,7 +177,27 @@ const userStats = ref({
   facesDetected: 0
 })
 
-const uploadedFiles = ref<ImageFile[]>([])
+const statCards = computed(() => [
+  {
+    label: 'Total Photos',
+    value: userStats.value.totalImages,
+    icon: Picture,
+    bg: 'linear-gradient(135deg, #e6f7ff, #409EFF 80%)'
+  },
+  {
+    label: 'Processed',
+    value: userStats.value.processedImages,
+    icon: Check,
+    bg: 'linear-gradient(135deg, #f6ffed, #67C23A 80%)'
+  },
+  {
+    label: 'Faces Found',
+    value: userStats.value.facesDetected,
+    icon: User,
+    bg: 'linear-gradient(135deg, #fff0f6, #eb2f96 80%)'
+  }
+])
+
 const recentImages = ref<ImageFile[]>([])
 
 const processingQueue = ref({
@@ -188,169 +207,52 @@ const processingQueue = ref({
   progress: 0
 })
 
+const showProcessingToast = ref(false)
+const processingToastMessage = ref('')
+const imageDetailVisible = ref(false)
+const selectedImage = ref<ImageFile | null>(null)
+const loadingImages = ref(false)
+
+const customProgressColor = (percentage: number) => {
+  if (percentage < 50) return '#409EFF';
+  if (percentage < 80) return '#67C23A';
+  return '#eb2f96';
+}
+
 const loadUserData = async () => {
+  loadingImages.value = true
   try {
     const response = await imageApi.getImages(1, 20)
-    recentImages.value = response.data.slice(0, 6)
-    
-    // Calculate stats
+    recentImages.value = (response.data || []).slice(0, 6)
     userStats.value = {
-      totalImages: response.total,
-      processedImages: response.data.filter(img => img.status === 'processed').length,
-      facesDetected: response.data.reduce((sum, img) => sum + (img.faceCount || 0), 0)
+      totalImages: response.total || 0,
+      processedImages: (response.data || []).filter(img => img.status === 'processed').length,
+      facesDetected: (response.data || []).reduce((sum, img) => sum + (img.faceCount || 0), 0)
     }
-  } catch (error) {
-    // Use demo data if API fails
-    const demoImages: ImageFile[] = [
-      {
-        id: '1',
-        filename: 'photo1.jpg',
-        originalName: 'family_photo.jpg',
-        url: 'https://via.placeholder.com/300x200/4CAF50/white?text=Photo+1',
-        thumbnailUrl: 'https://via.placeholder.com/150x100/4CAF50/white?text=Photo+1',
-        size: 1024000,
-        mimeType: 'image/jpeg',
-        faceDetected: true,
-        faceCount: 3,
-        qualityScore: 85,
-        userId: user.value?.id || '1',
-        createdAt: '2024-01-15',
-        status: 'processed'
-      },
-      {
-        id: '2',
-        filename: 'photo2.jpg',
-        originalName: 'vacation.jpg',
-        url: 'https://via.placeholder.com/300x200/2196F3/white?text=Photo+2',
-        thumbnailUrl: 'https://via.placeholder.com/150x100/2196F3/white?text=Photo+2',
-        size: 856000,
-        mimeType: 'image/jpeg',
-        faceDetected: true,
-        faceCount: 2,
-        qualityScore: 92,
-        userId: user.value?.id || '1',
-        createdAt: '2024-01-14',
-        status: 'processed'
-      }
-    ]
-    
-    recentImages.value = demoImages
-    userStats.value = {
-      totalImages: 24,
-      processedImages: 18,
-      facesDetected: 45
-    }
-  }
-}
-
-const beforeUpload = (file: File) => {
-  const isImage = file.type.startsWith('image/')
-  const isLt10M = file.size / 1024 / 1024 < 10
-
-  if (!isImage) {
-    ElMessage.error('Only image files are allowed!')
-    return false
-  }
-  if (!isLt10M) {
-    ElMessage.error('Image size must be smaller than 10MB!')
-    return false
-  }
-  return true
-}
-
-const onUploadSuccess = (response: any, file: File) => {
-  ElMessage({
-    message: `${file.name} uploaded successfully`,
-    type: 'success',
-    duration: 2000
-  })
-  
-  // Add to uploaded files list
-  const newFile: ImageFile = {
-    id: Date.now().toString(),
-    filename: file.name,
-    originalName: file.name,
-    url: URL.createObjectURL(file),
-    size: file.size,
-    mimeType: file.type,
-    faceDetected: false,
-    faceCount: 0,
-    userId: user.value?.id || '1',
-    createdAt: new Date().toISOString(),
-    status: 'uploaded'
-  }
-  
-  uploadedFiles.value.push(newFile)
-  loadUserData()
-}
-
-const onUploadError = (error: any, file: File) => {
-  ElMessage.error(`Failed to upload ${file.name}`)
-}
-
-const removeFile = (fileId: string) => {
-  uploadedFiles.value = uploadedFiles.value.filter(file => file.id !== fileId)
-}
-
-const clearUploads = () => {
-  uploadedFiles.value = []
-}
-
-const processImages = async () => {
-  if (uploadedFiles.value.length === 0) {
-    ElMessage.warning('Please upload some images first')
-    return
-  }
-  
-  processing.value = true
-  processingQueue.value.currentTask = 'Processing images...'
-  processingQueue.value.progress = 0
-  showProcessingToast.value = true
-  processingToastMessage.value = `Processing ${uploadedFiles.value.length} images...`
-  
-  try {
-    // Simulate processing progress
-    const interval = setInterval(() => {
-      processingQueue.value.progress += 5
-      
-      if (processingQueue.value.progress >= 100) {
-        clearInterval(interval)
-        processingQueue.value.currentTask = 'Completed'
-        processingToastMessage.value = 'Processing completed!'
-        
-        ElMessage({
-          message: 'Images processed successfully!',
-          type: 'success',
-          duration: 3000
-        })
-        
-        // Update uploaded files status
-        uploadedFiles.value.forEach(file => {
-          file.status = 'processed'
-          file.faceDetected = Math.random() > 0.3
-          file.faceCount = Math.floor(Math.random() * 5) + 1
-          file.qualityScore = Math.floor(Math.random() * 40) + 60
-        })
-        
-        setTimeout(() => {
-          processingQueue.value.progress = 0
-          processingQueue.value.currentTask = 'Idle'
-          uploadedFiles.value = []
-          loadUserData()
-          showProcessingToast.value = false
-        }, 2000)
-      }
-    }, 200)
-    
-    await imageApi.processImages()
   } catch (error: any) {
-    ElMessage.error(error.message || 'Failed to process images')
-    processingQueue.value.currentTask = 'Error'
-    processingQueue.value.progress = 0
-    showProcessingToast.value = false
+    ElMessage.error('Failed to load images: ' + (error.message || 'Unknown error'))
+    recentImages.value = []
+    userStats.value = {
+      totalImages: 0,
+      processedImages: 0,
+      facesDetected: 0
+    }
   } finally {
-    processing.value = false
+    loadingImages.value = false
   }
+}
+
+const getImageUrl = (image: ImageFile) => {
+  if (image.url?.startsWith('http')) return image.url
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+  return image.thumbnailUrl 
+    ? `${baseUrl}${image.thumbnailUrl.startsWith('/') ? '' : '/'}${image.thumbnailUrl}`
+    : `${baseUrl}${image.url?.startsWith('/') ? '' : '/'}${image.url}`
+}
+
+const openImageDetail = (image: ImageFile) => {
+  selectedImage.value = image
+  imageDetailVisible.value = true
 }
 
 const getStatusColor = (status: string) => {
@@ -358,17 +260,54 @@ const getStatusColor = (status: string) => {
     uploaded: 'info',
     processing: 'warning',
     processed: 'success',
+    selected: 'primary',
     error: 'danger'
   }
   return colors[status] || 'info'
 }
 
-// Watch for processing status to show/hide toast
-watch(() => processingQueue.value.progress, (newValue) => {
-  if (newValue > 0) {
-    showProcessingToast.value = true
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const onImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement
+  img.src = 'https://via.placeholder.com/300x200/f0f0f0/666?text=Image+Not+Found'
+}
+
+const processExistingImages = async () => {
+  processingQueue.value.currentTask = 'Processing existing images...'
+  processingQueue.value.progress = 0
+  showProcessingToast.value = true
+  processingToastMessage.value = 'Processing all unprocessed images...'
+  try {
+    const interval = setInterval(() => {
+      processingQueue.value.progress += 10
+      if (processingQueue.value.progress >= 100) {
+        clearInterval(interval)
+        processingQueue.value.currentTask = 'Completed'
+        processingToastMessage.value = 'Processing completed!'
+        ElMessage.success('Images processing started!')
+        setTimeout(() => {
+          processingQueue.value.progress = 0
+          processingQueue.value.currentTask = 'Idle'
+          showProcessingToast.value = false
+          loadUserData()
+        }, 2000)
+      }
+    }, 300)
+    await imageApi.processImages()
+  } catch (error: any) {
+    ElMessage.error(error.message || 'Failed to process images')
+    processingQueue.value.currentTask = 'Error'
+    processingQueue.value.progress = 0
+    showProcessingToast.value = false
   }
-})
+}
 
 onMounted(() => {
   loadUserData()
@@ -377,417 +316,180 @@ onMounted(() => {
 
 <style scoped>
 @keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-  100% { transform: scale(1); }
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 .user-dashboard {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px 12px 32px 12px;
   opacity: 0;
   animation: fadeIn 0.5s ease-out forwards;
 }
-
-.fade-in-down {
-  animation: fadeInDown 0.5s ease-out forwards;
-}
-
-.animate-card {
-  opacity: 0;
-  animation: fadeInUp 0.6s ease-out forwards;
-  transition: all 0.3s ease;
-}
-
 .dashboard-header {
-  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 32px;
+  background: linear-gradient(135deg, #f8fbff 60%, #e6f7ff 100%);
+  border-radius: 18px;
+  padding: 24px 32px;
+  box-shadow: 0 2px 12px rgba(64,158,255,0.06);
 }
-
-.dashboard-header h1 {
+.user-avatar-header {
+  background: linear-gradient(135deg, #409EFF, #67C23A);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+}
+.header-info h1 {
   margin: 0 0 8px 0;
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 600;
   color: #333;
   letter-spacing: -0.5px;
 }
-
-.dashboard-header p {
+.header-info p {
   margin: 0;
   color: #666;
-  font-size: 16px;
+  font-size: 15px;
 }
-
 .stats-row {
   margin-bottom: 24px;
 }
-
 .stat-card {
-  border-radius: 12px;
+  border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   position: relative;
   transition: all 0.3s ease;
+  min-height: 110px;
 }
-
 .stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: 0 10px 28px rgba(64,158,255,0.13);
 }
-
 .stat-content {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: 18px;
+  padding: 18px 10px 18px 18px;
   position: relative;
   z-index: 1;
 }
-
 .stat-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 60px;
   height: 60px;
-  border-radius: 12px;
-  background-color: rgba(64, 158, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.7);
   color: #409EFF;
+  font-size: 32px;
+  box-shadow: 0 2px 8px rgba(64,158,255,0.07);
 }
-
-.stat-card:nth-child(2) .stat-icon {
-  background-color: rgba(103, 194, 58, 0.1);
-  color: #67C23A;
+.stat-info .stat-number {
+  font-size: 26px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 2px;
 }
-
-.stat-card:nth-child(3) .stat-icon {
-  background-color: rgba(235, 47, 150, 0.1);
-  color: #eb2f96;
-}
-
-.stat-info h3 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.stat-info p {
-  margin: 4px 0 0 0;
+.stat-info .stat-label {
   color: #666;
   font-size: 14px;
 }
-
-.stat-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 4px;
-  transition: width 1s ease-in-out;
-}
-
-.upload-card {
+.main-row {
   margin-bottom: 24px;
-  border-radius: 12px;
+}
+.recent-photos-card, .status-card {
+  border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  margin-bottom: 24px;
   overflow: hidden;
   transition: all 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
-
-.upload-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+.recent-photos-card:hover, .status-card:hover {
+  box-shadow: 0 10px 28px rgba(64,158,255,0.13);
+  transform: translateY(-4px);
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.card-header span {
-  font-weight: 600;
-  font-size: 16px;
-  color: #333;
-}
-
-.upload-dragger {
-  width: 100%;
-  border: 2px dashed #e4e7ed;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.upload-dragger:hover {
-  border-color: #409EFF;
-  transform: translateY(-2px);
-}
-
-.upload-content {
-  padding: 30px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.el-icon--upload {
-  font-size: 48px;
-  color: #c0c4cc;
-  margin-bottom: 16px;
-  transition: color 0.3s ease;
-}
-
-.upload-dragger:hover .el-icon--upload {
-  color: #409EFF;
-}
-
-.el-upload__text {
-  font-size: 16px;
-  color: #606266;
-  margin-bottom: 8px;
-}
-
-.el-upload__text em {
-  color: #409EFF;
-  font-style: normal;
-}
-
-.el-upload__tip {
-  font-size: 12px;
-  color: #909399;
-}
-
-.upload-actions {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.section-title {
-  margin-top: 0;
-  margin-bottom: 16px;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
   color: #333;
+  padding: 8px 0 8px 0;
 }
-
-.uploaded-files {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 16px;
-  margin: 16px 0;
-}
-
-.file-fade-enter-active,
-.file-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.file-fade-enter-from,
-.file-fade-leave-to {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.uploaded-file {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  background: #fff;
-}
-
-.uploaded-file:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.uploaded-file img {
-  width: 100%;
-  height: 100px;
-  object-fit: cover;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.file-info {
-  padding: 8px;
-}
-
-.file-name {
-  margin-bottom: 4px;
-  color: #333;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 500;
-}
-
-.remove-file {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 24px;
-  height: 24px;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.3s ease;
-}
-
-.uploaded-file:hover .remove-file {
-  opacity: 1;
-}
-
-.remove-file:hover {
-  background: rgba(255, 0, 0, 0.7);
-  transform: scale(1.1);
-}
-
-.process-button {
-  width: 100%;
-  margin-top: 16px;
-  padding: 12px;
-  font-size: 16px;
-  height: auto;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.pulse-on-hover:hover {
-  animation: pulse 1s infinite;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
-}
-
-.recent-photos-card, 
-.status-card,
-.tips-card {
-  border-radius: 12px;
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 24px;
-  overflow: hidden;
-  transition: all 0.3s ease;
-  height: calc(100% - 24px);
-  display: flex;
-  flex-direction: column;
-}
-
-.recent-photos-card:hover,
-.status-card:hover,
-.tips-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  transform: translateY(-3px);
-}
-
 .recent-photos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
-
 .photo-item {
   position: relative;
   cursor: pointer;
-  transition: transform 0.3s;
-  border-radius: 8px;
+  transition: transform 0.3s, box-shadow 0.3s;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
-
 .photo-item:hover {
-  transform: scale(1.05);
+  transform: scale(1.06);
+  box-shadow: 0 8px 24px rgba(64,158,255,0.13);
 }
-
 .photo-container {
   position: relative;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   aspect-ratio: 4/3;
 }
-
 .photo-item img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.5s;
+  border-radius: 12px;
 }
-
 .photo-item:hover img {
-  transform: scale(1.1);
+  transform: scale(1.12);
 }
-
 .photo-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 8px;
-  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  padding: 10px 8px 8px 8px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.75));
   color: white;
+  border-radius: 0 0 12px 12px;
 }
-
 .photo-name {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .photo-meta {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
-
 .empty-photos {
   display: flex;
   flex-direction: column;
@@ -795,98 +497,82 @@ onMounted(() => {
   justify-content: center;
   padding: 40px 0;
 }
-
 .processing-status {
   margin-bottom: 16px;
 }
-
 .status-item {
   display: flex;
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid #f0f0f0;
 }
-
 .status-item:last-child {
   border-bottom: none;
 }
-
 .status-label {
   font-weight: 500;
   color: #666;
 }
-
 .status-value {
   color: #333;
   font-weight: 500;
 }
-
 .progress-bar {
   margin: 16px 0;
 }
-
 .quick-actions {
   margin-top: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .action-btn {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   height: auto;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
   justify-content: center;
+  font-size: 15px;
+  font-weight: 500;
 }
-
-.tips-list {
+.action-btn .el-icon {
+  font-size: 20px;
+}
+.pulse-on-hover:hover {
+  animation: pulse 1s infinite;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(64,158,255,0.13);
+}
+.image-detail-dialog {
+  border-radius: 18px;
+  overflow: hidden;
+  animation: fadeInUp 0.5s;
+}
+.image-detail-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  align-items: center;
 }
-
-.tip-item {
+.detail-image {
   display: flex;
-  gap: 12px;
-  padding: 10px;
+  justify-content: center;
+  align-items: center;
   background: #f8f9fa;
-  border-radius: 8px;
-  transition: all 0.3s ease;
+  border-radius: 12px;
+  padding: 20px;
 }
-
-.tip-item:hover {
-  background: #f0f2f5;
-  transform: translateY(-2px);
+.detail-image img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(64,158,255,0.08);
 }
-
-.tip-icon {
-  font-size: 24px;
-}
-
-.tip-content {
-  flex: 1;
-  font-size: 14px;
-  color: #333;
-}
-
-.stat-number {
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-  line-height: 1.2;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  color: #666;
-  font-size: 14px;
-}
-
 .processing-toast {
   position: fixed;
   bottom: -100px;
@@ -895,12 +581,10 @@ onMounted(() => {
   opacity: 0;
   z-index: 9999;
 }
-
 .show-toast {
   bottom: 30px;
   opacity: 1;
 }
-
 .toast-content {
   background: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -910,12 +594,10 @@ onMounted(() => {
   align-items: center;
   max-width: 320px;
 }
-
 .toast-icon {
   margin-right: 12px;
   color: #409EFF;
 }
-
 .toast-message {
   flex: 1;
   font-size: 14px;
@@ -923,7 +605,6 @@ onMounted(() => {
   margin-right: 12px;
   font-weight: 500;
 }
-
 .toast-progress {
   width: 100%;
   height: 4px;
@@ -935,70 +616,50 @@ onMounted(() => {
   left: 0;
   right: 0;
 }
-
 .toast-progress .progress-bar {
   height: 100%;
   background: #409EFF;
   transition: width 0.3s linear;
 }
-
 :deep(.el-card__header) {
   padding: 16px;
   border-bottom: 1px solid #f0f0f0;
 }
-
 :deep(.el-card__body) {
   padding: 20px;
   flex: 1;
 }
-
 :deep(.el-progress-bar__outer) {
   border-radius: 4px;
   background: #f0f2f5;
 }
-
 :deep(.el-progress-bar__inner) {
   border-radius: 4px;
 }
-
 :deep(.el-tag) {
   display: flex;
   align-items: center;
   gap: 4px;
 }
-
-@media (max-width: 768px) {
-  .dashboard-header {
-    margin-bottom: 20px;
-  }
-
-  .dashboard-header h1 {
-    font-size: 24px;
-  }
-
-  .stats-row {
-    margin-bottom: 16px;
-  }
-
-  .stats-row .el-col {
-    width: 100% !important;
-    margin-bottom: 16px;
-  }
-
-  .uploaded-files {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  }
-
-  .uploaded-file img {
-    height: 80px;
-  }
-
-  .el-col {
-    width: 100% !important;
-  }
-
-  .recent-photos {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  }
+@media (max-width: 900px) {
+  .main-row { flex-direction: column; }
+  .el-row.main-row > .el-col { width: 100% !important; margin-bottom: 18px; }
+  .dashboard-header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 18px 10px; }
+  .recent-photos { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
+@media (max-width: 600px) {
+  .user-dashboard { padding: 8px 2px 16px 2px; }
+  .dashboard-header { padding: 12px 4px; border-radius: 10px; }
+  .stat-card { min-height: 80px; }
+  .stat-content { gap: 10px; padding: 10px 4px 10px 10px; }
+  .stat-icon { width: 40px; height: 40px; font-size: 18px; }
+  .stat-info .stat-number { font-size: 18px; }
+  .main-row { margin-bottom: 10px; }
+  .recent-photos-card, .status-card { border-radius: 10px; }
+  .photo-item { border-radius: 8px; }
+  .photo-container { border-radius: 8px; }
+  .photo-overlay { border-radius: 0 0 8px 8px; }
+  .image-detail-dialog { border-radius: 10px; }
+  .detail-image { padding: 8px; }
 }
 </style> 

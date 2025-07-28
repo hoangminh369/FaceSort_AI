@@ -2,7 +2,8 @@
   <el-container class="admin-layout">
     <el-aside width="250px" class="sidebar" :class="{ 'collapsed': isCollapsed }">
       <div class="logo">
-        <h2>📸 Smart Photo Admin</h2>
+        <h2 v-if="!isCollapsed">📸 Smart Photo Admin</h2>
+        <h2 v-else class="logo-collapsed">📸</h2>
       </div>
       
       <el-menu
@@ -155,13 +156,13 @@ const handleCommand = async (command: string) => {
 }
 
 .sidebar {
-  background-color: #304156;
+  background: linear-gradient(180deg, #2c3e50, #1e293b);
   color: #bfcbd9;
   position: relative;
   transition: all 0.3s;
   overflow: hidden;
   z-index: 10;
-  box-shadow: 2px 0 6px rgba(0, 21, 41, 0.35);
+  box-shadow: 2px 0 10px rgba(0, 21, 41, 0.35);
 }
 
 .sidebar.collapsed {
@@ -188,8 +189,35 @@ const handleCommand = async (command: string) => {
   transition: all 0.3s;
 }
 
+.logo-collapsed {
+  font-size: 24px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .admin-menu {
   border: none;
+}
+
+.admin-menu :deep(.el-menu-item) {
+  border-left: 3px solid transparent;
+  margin: 4px 0;
+}
+
+.admin-menu :deep(.el-menu-item.is-active) {
+  background-color: #263445 !important;
+  border-left: 3px solid #409EFF;
+}
+
+.admin-menu :deep(.el-menu-item:hover) {
+  background-color: #263445 !important;
+  color: #ffffff !important;
+}
+
+.admin-menu :deep(.el-menu-item) .el-icon {
+  margin-right: 10px;
+  font-size: 18px;
 }
 
 .header {
@@ -253,7 +281,7 @@ const handleCommand = async (command: string) => {
   color: #bfcbd9;
   background-color: #263445;
   padding: 8px 0;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: all 0.3s;
   margin: 0 10px;
 }
@@ -261,6 +289,7 @@ const handleCommand = async (command: string) => {
 .sidebar-toggler:hover {
   color: #409EFF;
   background-color: #1f2d3d;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .user-avatar {

@@ -20,7 +20,7 @@ const config = {
   },
   // DeepFace local configuration
   deepface: {
-    pythonPath: 'py', // Force use 'py' command
+    pythonPath: path.join(__dirname, '../../.venv/Scripts/python.exe'), // Use virtual environment Python
     model: process.env.DEEPFACE_MODEL || 'VGG-Face',
     detector: 'opencv', // Force use opencv detector
     metric: process.env.DEEPFACE_METRIC || 'cosine',
