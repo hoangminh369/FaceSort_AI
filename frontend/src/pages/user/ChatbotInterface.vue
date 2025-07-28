@@ -116,7 +116,12 @@
                   </div>
                   <!-- Normal display mode -->
                   <div v-else class="message-text">
-                    {{ message.response || message.message }}
+                    <template v-if="message.response">
+                      <div v-html="renderMarkdown(message.response)"></div>
+                    </template>
+                    <template v-else>
+                      {{ message.message }}
+                    </template>
                   </div>
                   
                   <!-- Display attached images -->
@@ -693,6 +698,7 @@ import {
 } from '@element-plus/icons-vue'
 import { chatbotApi, imageApi } from '@/services/api'
 import type { ChatMessage, Conversation } from '@/types'
+import MarkdownIt from 'markdown-it'
 
 // Utility to clean markdown-like characters from bot responses
 const sanitizeText = (text: string): string => text.replace(/[*#]+/g, '').trim()
@@ -1570,6 +1576,27 @@ onUnmounted(() => {
   }
   window.removeEventListener('resize', scrollToBottom);
 });
+
+// Markdown instance
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+  typographer: true
+})
+
+// Hàm render markdown
+const renderMarkdown = (text: string) => {
+  if (!text) return ''
+  // Ghép các dòng chỉ có số thứ tự với tất cả các dòng indent tiếp theo thành một dòng duy nhất
+  let fixed = text.replace(/^(\d+)\.\s*\n([ \t]+[^\n]+(?:\n[ \t]+[^\n]+)*)/gm, (match, num, content) => {
+    // Ghép tất cả các dòng indent thành một dòng, cách nhau bởi dấu cách
+    return num + '. ' + content.replace(/\n[ \t]+/g, ' ')
+  })
+  // Xoá dòng trắng thừa giữa các mục danh sách
+  fixed = fixed.replace(/\n{2,}/g, '\n')
+  return md.render(fixed)
+}
 </script>
 
 <style scoped>
@@ -3146,5 +3173,73 @@ onUnmounted(() => {
   border-color: #409eff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
+}
+
+/* Markdown styling for bot message */
+.message-text {
+  /* giữ lại style cũ */
+}
+.message-text :deep(h1),
+.message-text :deep(h2),
+.message-text :deep(h3),
+.message-text :deep(h4),
+.message-text :deep(h5),
+.message-text :deep(h6) {
+  font-weight: bold;
+  margin: 0.5em 0 0.2em 0;
+  color: #222;
+}
+.message-text :deep(ol),
+.message-text :deep(ul) {
+  margin: 0.1em 0 0.1em 1.2em;
+  padding-left: 1.2em;
+  list-style-position: inside;
+}
+.message-text :deep(li) {
+  margin-bottom: 0.05em;
+  line-height: 1.5;
+  padding-left: 0;
+}
+.message-text :deep(strong) {
+  font-weight: bold;
+  color: #222;
+}
+.message-text :deep(em) {
+  font-style: italic;
+}
+.message-text :deep(p) {
+  margin: 0.2em 0;
+  line-height: 1.7;
+}
+.message-text :deep(a) {
+  color: #409eff;
+  text-decoration: underline;
+}
+.message-text :deep(code) {
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 90%;
+  color: #c7254e;
+}
+.message-text :deep(blockquote) {
+  margin: 0.1em 0 0.1em 1.2em;
+  padding: 0.2em 1em;
+  border-left: 3px solid #e0e0e0;
+  background: #f8f9fa;
+  font-style: italic;
+  line-height: 1.4;
+}
+.message-text :deep(pre) {
+  margin: 0.1em 0;
+  padding: 0.3em 0.7em;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 95%;
+  line-height: 1.3;
+}
+.message-text :deep(code) {
+  padding: 1px 4px;
+  font-size: 95%;
 }
 </style> 

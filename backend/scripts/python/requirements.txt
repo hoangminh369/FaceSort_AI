@@ -1,7 +1,14 @@
-deepface==0.0.93
-opencv-python>=4.8.1.78
-numpy==1.23.5
-pandas>=2.1.4
-Pillow>=9.5.0
-requests>=2.31.0
-tensorflow-cpu==2.12.0 
+# DeepFace và các thư viện AI/ML phổ biến, tránh conflict numpy
+deepface==0.0.83
+tensorflow==2.11.0
+numpy==1.26.4
+opencv-python==4.8.1.78
+pandas==1.5.3
+matplotlib==3.7.1
+scipy==1.10.1
+Pillow==9.5.0
+
+# Các thư viện phụ trợ (nếu cần)
+tqdm==4.65.0
+gdown==4.7.1
+fire==0.5.0

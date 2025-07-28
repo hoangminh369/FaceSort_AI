@@ -24,8 +24,85 @@
           inactive-text="All Photos"
           class="face-switch"
         />
+        <el-button type="primary" @click="refreshImages" :loading="loading" class="refresh-btn">
+          <el-icon><Refresh /></el-icon>
+          Refresh
+        </el-button>
       </div>
     </div>
+    
+    <!-- Upload Section -->
+    <el-card class="upload-card animate-card" :style="{ animationDelay: '0.05s' }">
+      <template #header>
+        <div class="card-header">
+          <span>Upload New Photos</span>
+          <el-button 
+            v-if="uploadedFiles.length > 0" 
+            type="danger" 
+            size="small" 
+            @click="clearUploads"
+          >
+            Clear All
+          </el-button>
+        </div>
+      </template>
+      
+      <el-upload
+        ref="uploadRef"
+        :action="uploadUrl"
+        :before-upload="beforeUpload"
+        :on-success="onUploadSuccess"
+        :on-error="onUploadError"
+        :headers="uploadHeaders"
+        multiple
+        drag
+        accept="image/*"
+        :auto-upload="false"
+        :file-list="fileList"
+        @change="handleFileChange"
+        class="upload-dragger"
+      >
+        <div class="upload-content">
+          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+          <div class="el-upload__text">
+            Drop image files here or <em>click to upload</em>
+          </div>
+          <div class="el-upload__tip">
+            jpg/png files with a size less than 10MB
+          </div>
+        </div>
+      </el-upload>
+      
+      <div v-if="uploadedFiles.length > 0" class="upload-actions">
+        <h4 class="section-title">Ready to Upload ({{ uploadedFiles.length }} files)</h4>
+        <div class="uploaded-files">
+          <transition-group name="file-fade">
+            <div v-for="file in uploadedFiles" :key="file.uid" class="uploaded-file">
+              <img :src="file.url" :alt="file.name" />
+              <div class="file-info">
+                <div class="file-name">{{ file.name }}</div>
+                <el-tag size="small" :type="getFileStatusColor(file.status)">
+                  {{ file.status || 'ready' }}
+                </el-tag>
+              </div>
+              <div class="remove-file" @click="removeFile(file.uid)">
+                <el-icon><Close /></el-icon>
+              </div>
+            </div>
+          </transition-group>
+        </div>
+        <el-button 
+          type="primary" 
+          @click="startUpload" 
+          :loading="uploading"
+          :disabled="uploadedFiles.length === 0"
+          class="upload-button pulse-on-hover"
+        >
+          <el-icon><UploadFilled /></el-icon>
+          {{ uploading ? 'Uploading...' : `Upload ${uploadedFiles.length} Photos` }}
+        </el-button>
+      </div>
+    </el-card>
     
     <!-- Stats Bar -->
     <div class="stats-bar animate-card" :style="{ animationDelay: '0.1s' }">
@@ -57,7 +134,7 @@
         >
           <div class="image-container">
             <img
-              :src="image.thumbnailUrl || image.url"
+              :src="getImageUrl(image)"
               :alt="image.originalName"
               @load="onImageLoad"
               @error="onImageError"
@@ -144,7 +221,7 @@
     >
       <div v-if="selectedImage" class="lightbox-content">
         <div class="lightbox-image">
-          <img :src="selectedImage.url" :alt="selectedImage.originalName" />
+          <img :src="getImageUrl(selectedImage)" :alt="selectedImage.originalName" />
         </div>
         
         <div class="lightbox-info">
@@ -203,11 +280,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Download, Delete, User } from '@element-plus/icons-vue'
+import { Search, Download, Delete, User, UploadFilled, Close, Refresh } from '@element-plus/icons-vue'
 import { imageApi } from '@/services/api'
 import type { ImageFile } from '@/types'
 
 const loading = ref(false)
+const uploading = ref(false)
 const images = ref<ImageFile[]>([])
 const searchQuery = ref('')
 const statusFilter = ref('')
@@ -219,6 +297,18 @@ const selectedImage = ref<ImageFile | null>(null)
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastIcon = ref('')
+
+// Upload related
+const uploadRef = ref()
+const uploadedFiles = ref<any[]>([])
+const fileList = ref([])
+const uploadUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/images/upload`
+
+// Upload headers with auth token
+const uploadHeaders = computed(() => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+})
 
 const filteredImages = computed(() => {
   let filtered = images.value
@@ -260,46 +350,36 @@ const highQualityImages = computed(() => {
 const loadImages = async () => {
   loading.value = true
   try {
-    const response = await imageApi.getImages(1, 1000) // Load all for demo
-    images.value = response.data
-  } catch (error) {
-    // Use demo data if API fails
-    images.value = generateDemoImages()
+    const response = await imageApi.getImages(1, 1000) // Load all images
+    images.value = response.data || []
+    console.log('Loaded images:', images.value)
+  } catch (error: any) {
+    console.error('Failed to load images:', error)
+    ElMessage.error('Failed to load images: ' + (error.message || 'Unknown error'))
+    images.value = []
   } finally {
     setTimeout(() => {
       loading.value = false
-    }, 500) // Add small delay for animation effect
+    }, 500)
   }
 }
 
-const generateDemoImages = (): ImageFile[] => {
-  const demoImages: ImageFile[] = []
-  const statuses: Array<'uploaded' | 'processing' | 'processed' | 'selected'> = ['uploaded', 'processing', 'processed', 'selected']
-  
-  for (let i = 1; i <= 50; i++) {
-    const status = statuses[Math.floor(Math.random() * statuses.length)]
-    const faceDetected = Math.random() > 0.3
-    const faceCount = faceDetected ? Math.floor(Math.random() * 5) + 1 : 0
-    const qualityScore = status === 'processed' ? Math.floor(Math.random() * 40) + 60 : undefined
-    
-    demoImages.push({
-      id: i.toString(),
-      filename: `photo${i}.jpg`,
-      originalName: `photo_${i}_${['family', 'vacation', 'party', 'nature', 'portrait'][Math.floor(Math.random() * 5)]}.jpg`,
-      url: `https://picsum.photos/800/600?random=${i}`,
-      thumbnailUrl: `https://picsum.photos/300/200?random=${i}`,
-      size: Math.floor(Math.random() * 5000000) + 500000, // 0.5-5MB
-      mimeType: 'image/jpeg',
-      faceDetected,
-      faceCount,
-      qualityScore,
-      userId: '1',
-      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      status
-    })
+const refreshImages = async () => {
+  await loadImages()
+  showToastNotification('Images refreshed', 'Check')
+}
+
+const getImageUrl = (image: ImageFile) => {
+  // If URL is already absolute, return as is
+  if (image.url?.startsWith('http')) {
+    return image.url
   }
   
-  return demoImages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // If URL is relative, prepend base URL
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+  return image.thumbnailUrl 
+    ? `${baseUrl}${image.thumbnailUrl.startsWith('/') ? '' : '/'}${image.thumbnailUrl}`
+    : `${baseUrl}${image.url?.startsWith('/') ? '' : '/'}${image.url}`
 }
 
 const handleSearch = () => {
@@ -312,7 +392,6 @@ const resetFilters = () => {
   showOnlyWithFaces.value = false
   currentPage.value = 1
   
-  // Show toast notification
   showToastNotification('Filters reset', 'Check')
 }
 
@@ -323,15 +402,14 @@ const openLightbox = (image: ImageFile) => {
 
 const downloadImage = async (image: ImageFile) => {
   try {
-    // Create download link
     const link = document.createElement('a')
-    link.href = image.url
+    link.href = getImageUrl(image)
     link.download = image.originalName
+    link.target = '_blank'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     
-    // Show toast notification
     showToastNotification('Download started', 'Download')
   } catch (error) {
     ElMessage.error('Download failed')
@@ -352,7 +430,6 @@ const deleteImage = async (imageId: string) => {
     // Remove from local array
     images.value = images.value.filter(img => img.id !== imageId)
     
-    // Show toast notification
     showToastNotification('Image deleted successfully', 'Delete')
     
     lightboxVisible.value = false
@@ -367,26 +444,108 @@ const processSelectedImage = async () => {
   if (!selectedImage.value) return
   
   try {
-    // Show toast notification
     showToastNotification('Processing image...', 'Loading')
     
-    // Simulate processing
-    selectedImage.value.status = 'processing'
+    // Call process images API
+    await imageApi.processImages()
     
-    setTimeout(() => {
-      if (selectedImage.value) {
-        selectedImage.value.status = 'processed'
-        selectedImage.value.faceDetected = Math.random() > 0.2
-        selectedImage.value.faceCount = selectedImage.value.faceDetected ? Math.floor(Math.random() * 5) + 1 : 0
-        selectedImage.value.qualityScore = Math.floor(Math.random() * 40) + 60
-        
-        // Show success notification
-        showToastNotification('Image processed successfully', 'SuccessFilled')
-      }
-    }, 3000)
+    // Refresh images to get updated status
+    await loadImages()
+    
+    showToastNotification('Image processing started', 'SuccessFilled')
   } catch (error: any) {
     ElMessage.error(error.message || 'Processing failed')
   }
+}
+
+// Upload functions
+const beforeUpload = (file: File) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt10M = file.size / 1024 / 1024 < 10
+
+  if (!isImage) {
+    ElMessage.error('Only image files are allowed!')
+    return false
+  }
+  if (!isLt10M) {
+    ElMessage.error('Image size must be smaller than 10MB!')
+    return false
+  }
+  return false // Prevent auto upload
+}
+
+const handleFileChange = (file: any, fileList: any[]) => {
+  uploadedFiles.value = fileList.map(f => ({
+    ...f,
+    url: URL.createObjectURL(f.raw),
+    status: 'ready'
+  }))
+}
+
+const removeFile = (uid: string) => {
+  uploadedFiles.value = uploadedFiles.value.filter(file => file.uid !== uid)
+  fileList.value = fileList.value.filter((file: any) => file.uid !== uid)
+}
+
+const clearUploads = () => {
+  uploadedFiles.value = []
+  fileList.value = []
+  if (uploadRef.value) {
+    uploadRef.value.clearFiles()
+  }
+}
+
+const startUpload = async () => {
+  if (uploadedFiles.value.length === 0) return
+  
+  uploading.value = true
+  
+  try {
+    // Get raw files
+    const files = uploadedFiles.value.map(f => f.raw).filter(Boolean)
+    
+    if (files.length === 0) {
+      ElMessage.error('No valid files to upload')
+      return
+    }
+    
+    // Upload files using API
+    const uploadedImages = await imageApi.uploadImages(files)
+    
+    ElMessage.success(`Successfully uploaded ${uploadedImages.length} images`)
+    
+    // Clear uploaded files
+    clearUploads()
+    
+    // Refresh images list
+    await loadImages()
+    
+    showToastNotification(`${uploadedImages.length} images uploaded successfully`, 'SuccessFilled')
+    
+  } catch (error: any) {
+    console.error('Upload error:', error)
+    ElMessage.error(error.message || 'Upload failed')
+  } finally {
+    uploading.value = false
+  }
+}
+
+const onUploadSuccess = (response: any, file: any) => {
+  // This won't be called since auto-upload is disabled
+}
+
+const onUploadError = (error: any, file: any) => {
+  ElMessage.error(`Failed to upload ${file.name}`)
+}
+
+const getFileStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    ready: 'info',
+    uploading: 'warning',
+    success: 'success',
+    error: 'danger'
+  }
+  return colors[status] || 'info'
 }
 
 const showToastNotification = (message: string, icon: string) => {
@@ -841,6 +1000,178 @@ onMounted(() => {
 
 :deep(.el-descriptions .el-descriptions__label) {
   width: 120px;
+}
+
+.upload-card {
+  margin-bottom: 24px;
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.upload-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.upload-dragger {
+  width: 100%;
+  border: 2px dashed #e4e7ed;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.upload-dragger:hover {
+  border-color: #409EFF;
+  transform: translateY(-2px);
+}
+
+.upload-content {
+  padding: 30px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.el-icon--upload {
+  font-size: 48px;
+  color: #c0c4cc;
+  margin-bottom: 16px;
+  transition: color 0.3s ease;
+}
+
+.upload-dragger:hover .el-icon--upload {
+  color: #409EFF;
+}
+
+.el-upload__text {
+  font-size: 16px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.el-upload__text em {
+  color: #409EFF;
+  font-style: normal;
+}
+
+.el-upload__tip {
+  font-size: 12px;
+  color: #909399;
+}
+
+.upload-actions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.section-title {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.uploaded-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.file-fade-enter-active,
+.file-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.file-fade-enter-from,
+.file-fade-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.uploaded-file {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  background: #fff;
+}
+
+.uploaded-file:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.uploaded-file img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.file-info {
+  padding: 8px;
+}
+
+.file-name {
+  margin-bottom: 4px;
+  color: #333;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.remove-file {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.uploaded-file:hover .remove-file {
+  opacity: 1;
+}
+
+.remove-file:hover {
+  background: rgba(255, 0, 0, 0.7);
+  transform: scale(1.1);
+}
+
+.upload-button {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  font-size: 16px;
+  height: auto;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn {
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+  transform: translateY(-2px);
 }
 
 @media (max-width: 768px) {
