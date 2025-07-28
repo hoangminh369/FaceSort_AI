@@ -18,8 +18,11 @@ import type {
 
 class ApiClient {
   private client: AxiosInstance
+  private useMockApi: boolean
 
   constructor() {
+    this.useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+    
     this.client = axios.create({
       baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
       timeout: 300000, // 5 minutes timeout for deepface processing
@@ -52,12 +55,29 @@ class ApiClient {
       },
       (error) => {
         NProgress.done()
+        
+        // Enhanced error handling
+        if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNREFUSED') {
+          console.warn('API connection failed, consider using mock data for development')
+        }
+        
         if (error.response?.status === 401) {
           localStorage.removeItem('token')
           localStorage.removeItem('userRole')
           window.location.href = '/login'
         }
-        return Promise.reject(error.response?.data || error)
+        
+        // Return more descriptive error
+        const errorMessage = error.response?.data?.message || 
+                           error.response?.data?.error || 
+                           error.message || 
+                           'Unknown error occurred'
+        
+        return Promise.reject({
+          message: errorMessage,
+          status: error.response?.status,
+          code: error.code
+        })
       }
     )
   }
@@ -96,47 +116,96 @@ class ApiClient {
 
   // User endpoints
   async getUsers(page = 1, limit = 10): Promise<PaginatedResponse<User>> {
-    const response = await this.get<PaginatedResponse<User>>(`/users?page=${page}&limit=${limit}`)
+    const response = await this.get<PaginatedResponse<User>>(`/auth/users?page=${page}&limit=${limit}`)
     return response.data!
   }
 
   async createUser(data: Partial<User>): Promise<User> {
-    const response = await this.post<User>('/users', data)
+    const response = await this.post<User>('/auth/users', data)
     return response.data!
   }
 
   async updateUser(id: string, data: Partial<User>): Promise<User> {
-    const response = await this.put<User>(`/users/${id}`, data)
+    const response = await this.put<User>(`/auth/users/${id}`, data)
     return response.data!
   }
 
   async deleteUser(id: string): Promise<void> {
-    await this.delete(`/users/${id}`)
+    await this.delete(`/auth/users/${id}`)
   }
 
   // Image endpoints
   async getImages(page = 1, limit = 20): Promise<PaginatedResponse<ImageFile>> {
-    const response = await this.get<PaginatedResponse<ImageFile>>(`/images?page=${page}&limit=${limit}`)
-    return response.data!
+    try {
+      const response = await this.get<PaginatedResponse<ImageFile>>(`/images?page=${page}&limit=${limit}`)
+      
+      // Ensure URLs are properly formatted
+      if (response.data && response.data.data) {
+        response.data.data = response.data.data.map(image => ({
+          ...image,
+          url: this.formatImageUrl(image.url),
+          thumbnailUrl: image.thumbnailUrl ? this.formatImageUrl(image.thumbnailUrl) : undefined
+        }))
+      }
+      
+      return response.data!
+    } catch (error: any) {
+      console.error('Failed to fetch images:', error)
+      
+      // Return empty result instead of throwing
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0
+      }
+    }
   }
 
   async uploadImages(files: File[]): Promise<ImageFile[]> {
+    if (files.length === 0) {
+      throw new Error('No files provided for upload')
+    }
+    
     const formData = new FormData()
     files.forEach(file => formData.append('images', file))
     
-    const response = await this.client.post('/images/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    return response.data
+    try {
+      const response = await this.client.post('/images/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      
+      // Format URLs for uploaded images
+      const uploadedImages = Array.isArray(response.data) ? response.data : [response.data]
+      return uploadedImages.map((image: ImageFile) => ({
+        ...image,
+        url: this.formatImageUrl(image.url),
+        thumbnailUrl: image.thumbnailUrl ? this.formatImageUrl(image.thumbnailUrl) : undefined
+      }))
+    } catch (error: any) {
+      console.error('Upload failed:', error)
+      throw new Error(error.message || 'Failed to upload images')
+    }
   }
 
   async deleteImage(id: string): Promise<void> {
-    await this.delete(`/images/${id}`)
+    try {
+      await this.delete(`/images/${id}`)
+    } catch (error: any) {
+      console.error('Delete failed:', error)
+      throw new Error(error.message || 'Failed to delete image')
+    }
   }
 
   async processImages(): Promise<{ executionId: string }> {
-    const response = await this.post<{ executionId: string }>('/images/process')
-    return response.data!
+    try {
+      const response = await this.post<{ executionId: string }>('/images/process')
+      return response.data!
+    } catch (error: any) {
+      console.error('Process images failed:', error)
+      throw new Error(error.message || 'Failed to process images')
+    }
   }
 
   // Workflow endpoints
@@ -294,6 +363,23 @@ class ApiClient {
   async register(data: { username: string; email: string; password: string }) {
     const response = await this.post('/auth/register', data)
     return response.data
+  }
+
+  // Helper method to format image URLs
+  private formatImageUrl(url: string): string {
+    if (!url) return ''
+    
+    // If URL is already absolute, return as is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url
+    }
+    
+    // If URL is relative, prepend base URL
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+    const cleanBaseUrl = baseUrl.replace('/api', '') // Remove /api suffix if present
+    const cleanUrl = url.startsWith('/') ? url : '/' + url
+    
+    return cleanBaseUrl + cleanUrl
   }
 }
 

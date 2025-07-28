@@ -20,6 +20,26 @@ export interface DriveFile {
 }
 
 class GoogleDriveService {
+  /**
+   * Generic retry helper for transient network errors (e.g. ETIMEDOUT)
+   */
+  private async executeWithRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        attempt++;
+        const isTransient = err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.message?.includes('timeout');
+        if (!isTransient || attempt > retries) {
+          throw err;
+        }
+        console.warn(`[GoogleDriveService] Transient error (${err.code || 'unknown'}) – retry ${attempt}/${retries} after ${backoffMs}ms`);
+        await new Promise(res => setTimeout(res, backoffMs * attempt));
+      }
+    }
+  }
+
   private getClient(driveConfig: IDriveConfig) {
     const { clientId, clientSecret, refreshToken } = driveConfig
     
@@ -109,10 +129,10 @@ class GoogleDriveService {
   async listFolders(driveConfig: IDriveConfig, parentId: string = 'root'): Promise<DriveFolder[]> {
     try {
       const drive = this.getClient(driveConfig)
-      const res = await drive.files.list({
+      const res = await this.executeWithRetry(() => drive.files.list({
         q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name, mimeType, parents)'
-      })
+      }))
       return res.data.files as DriveFolder[] || []
     } catch (error: any) {
       console.error('Error listing folders:', error)
@@ -332,12 +352,11 @@ class GoogleDriveService {
       
       console.log(`[GoogleDriveService] Getting images from folder: ${folderId} with query: ${query}`)
       
-      const res = await drive.files.list({
+      const res = await this.executeWithRetry(() => drive.files.list({
         q: query,
         fields: 'files(id, name, mimeType, thumbnailLink, webViewLink, size, modifiedTime, parents)',
         pageSize: maxResults
-      })
-      
+      }))
       const files = res.data.files as DriveFile[] || []
       console.log(`[GoogleDriveService] Found ${files.length} images in folder ${folderId}`)
       

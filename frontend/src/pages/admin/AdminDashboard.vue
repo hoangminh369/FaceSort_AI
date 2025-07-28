@@ -1,8 +1,13 @@
 <template>
   <div class="admin-dashboard">
     <div class="dashboard-header fade-in-down">
-      <h1>Admin Dashboard</h1>
-      <p>System Overview and Management</p>
+      <div class="header-content">
+        <h1>Admin Dashboard</h1>
+        <p>System Overview and Management</p>
+      </div>
+      <div class="welcome-message">
+        <span>Welcome back, <strong>Admin</strong>! 👋</span>
+      </div>
     </div>
     
     <!-- Statistics Cards -->
@@ -66,7 +71,7 @@
             </el-table-column>
           </el-table>
           <div class="view-all-link">
-            <el-button text type="primary" @click="$router.push('/admin/workflows')">
+            <el-button text type="primary" @click="router.push('/admin/workflows')">
               View all workflows
               <el-icon class="el-icon--right"><ArrowRight /></el-icon>
             </el-button>
@@ -104,6 +109,19 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { systemApi, driveApi, imageApi, workflowApi } from '@/services/api'
 import type { SystemStats, Workflow } from '@/types'
+import { useRouter } from 'vue-router'
+import { 
+  UserFilled, 
+  Setting, 
+  FolderOpened, 
+  Picture, 
+  User, 
+  Check, 
+  View, 
+  ArrowRight 
+} from '@element-plus/icons-vue'
+
+const router = useRouter()
 
 const stats = ref<SystemStats>({
   totalUsers: 0,
@@ -126,32 +144,25 @@ const statCards = [
 
 const quickActions = computed(() => [
   { 
-    label: 'Scan Google Drive', 
-    type: 'primary', 
-    icon: 'FolderOpened', 
-    loading: scanning.value,
-    handler: handleScanDrive 
-  },
-  { 
-    label: 'Process Images', 
-    type: 'success', 
-    icon: 'Setting', 
-    loading: processing.value,
-    handler: handleProcessImages 
-  },
-  { 
-    label: 'Manage Workflows', 
-    type: 'info', 
-    icon: 'Tools', 
-    loading: false,
-    handler: () => { $router.push('/admin/workflows') } 
-  },
-  { 
     label: 'Manage Users', 
-    type: 'warning', 
+    type: 'primary', 
     icon: 'UserFilled', 
     loading: false,
-    handler: () => { $router.push('/admin/users') } 
+    handler: () => router.push('/admin/users')
+  },
+  { 
+    label: 'System Config', 
+    type: 'warning', 
+    icon: 'Setting', 
+    loading: false,
+    handler: () => router.push('/admin/config')
+  },
+  { 
+    label: 'Drive Explorer', 
+    type: 'success', 
+    icon: 'FolderOpened', 
+    loading: false,
+    handler: () => router.push('/admin/drive')
   }
 ])
 
@@ -316,9 +327,16 @@ onMounted(() => {
 .dashboard-header {
   margin-bottom: 32px;
   animation: fadeInDown 0.5s ease-out forwards;
+  background: linear-gradient(135deg, #ffffff, #f9f9f9);
+  padding: 20px 30px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.dashboard-header h1 {
+.header-content h1 {
   margin: 0 0 8px 0;
   font-size: 32px;
   font-weight: 600;
@@ -326,10 +344,19 @@ onMounted(() => {
   letter-spacing: -0.5px;
 }
 
-.dashboard-header p {
+.header-content p {
   margin: 0;
   color: #666;
   font-size: 16px;
+}
+
+.welcome-message {
+  font-size: 16px;
+  color: #555;
+  background-color: #f0f7ff;
+  padding: 8px 16px;
+  border-radius: 30px;
+  border-left: 4px solid #409EFF;
 }
 
 .stats-row {
@@ -353,17 +380,26 @@ onMounted(() => {
 }
 
 .stat-card {
-  border-radius: 12px;
+  border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   overflow: hidden;
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-8px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
 }
+
+.stat-card:hover .stat-icon {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.user-icon { background: linear-gradient(135deg, #409EFF, #2980b9); }
+.image-icon { background: linear-gradient(135deg, #67C23A, #27ae60); }
+.processed-icon { background: linear-gradient(135deg, #E6A23C, #d35400); }
+.face-icon { background: linear-gradient(135deg, #F56C6C, #c0392b); }
 
 .stat-content {
   display: flex;
@@ -381,15 +417,6 @@ onMounted(() => {
   color: white;
   transition: all 0.3s ease;
 }
-
-.stat-card:hover .stat-icon {
-  transform: scale(1.05);
-}
-
-.user-icon { background: linear-gradient(135deg, #409EFF, #2980b9); }
-.image-icon { background: linear-gradient(135deg, #67C23A, #27ae60); }
-.processed-icon { background: linear-gradient(135deg, #E6A23C, #d35400); }
-.face-icon { background: linear-gradient(135deg, #F56C6C, #c0392b); }
 
 .stat-info {
   flex: 1;
@@ -410,9 +437,10 @@ onMounted(() => {
 
 .actions-card {
   margin-bottom: 32px;
-  border-radius: 12px;
+  border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #ffffff, #f9f9f9);
 }
 
 .action-button {
@@ -420,14 +448,24 @@ onMounted(() => {
   height: 64px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 10px;
+  border-radius: 12px;
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-button .el-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
 }
 
 .pulse-on-hover:hover {
-  animation: pulse 0.5s infinite;
+  animation: pulse 1s infinite;
   transform: translateY(-3px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
 }
 
 .activity-row {
@@ -549,6 +587,15 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .welcome-message {
+    align-self: stretch;
+  }
   .stats-row .el-col,
   .actions-card .el-col {
     width: 50%;
