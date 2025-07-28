@@ -34,91 +34,33 @@ interface DeepFaceResponse {
 }
 
 class DeepFaceService {
-  private pythonScriptPath: string = '';
+  private pythonScriptPath: string;
   private pythonExecutable: string;
   private useFallback: boolean = false;
 
   constructor() {
-    // Prefer the new simple face processor for better accuracy
-    const simpleProcessorPath = path.join(__dirname, '../../scripts/python/simple_face_processor.py');
-    const enhancedScriptPath = path.join(__dirname, '../../scripts/python/simple_face_processor_v2.py');
+    // Prefer full DeepFace processor if available for better accuracy
     const deepfaceProcessorPath = path.join(__dirname, '../../scripts/python/deepface_processor.py');
+    const enhancedScriptPath = path.join(__dirname, '../../scripts/python/simple_face_processor_v2.py');
+    const basicScriptPath = path.join(__dirname, '../../scripts/python/simple_face_processor.py');
     
-    console.log(`[DeepFaceService] Looking for Python scripts at:`);
-    console.log(`- Simple processor: ${simpleProcessorPath} (exists: ${fs.existsSync(simpleProcessorPath)})`);
-    console.log(`- Enhanced processor: ${enhancedScriptPath} (exists: ${fs.existsSync(enhancedScriptPath)})`);
-    console.log(`- Deepface processor: ${deepfaceProcessorPath} (exists: ${fs.existsSync(deepfaceProcessorPath)})`);
-    
-    // Prioritize the new simple processor
-    if (fs.existsSync(simpleProcessorPath)) {
-      this.pythonScriptPath = simpleProcessorPath;
-      console.log(`[DeepFaceService] Using new simple face processor: ${simpleProcessorPath}`);
+    if (fs.existsSync(deepfaceProcessorPath)) {
+      this.pythonScriptPath = deepfaceProcessorPath;
     } else if (fs.existsSync(enhancedScriptPath)) {
       this.pythonScriptPath = enhancedScriptPath;
-      console.log(`[DeepFaceService] Using enhanced face processor: ${enhancedScriptPath}`);
-    } else if (fs.existsSync(deepfaceProcessorPath)) {
-      this.pythonScriptPath = deepfaceProcessorPath;
-      console.log(`[DeepFaceService] Using deepface processor: ${deepfaceProcessorPath}`);
     } else {
-      console.warn(`[DeepFaceService] No Python script found! Will use fallback methods.`);
-      this.useFallback = true;
+      this.pythonScriptPath = basicScriptPath;
     }
     
     // Use Python path from config or default to 'python'
     this.pythonExecutable = config.deepface?.pythonPath || 'python';
     
-    console.log(`[DeepFaceService] Using Python executable: ${this.pythonExecutable} (exists: ${fs.existsSync(this.pythonExecutable)})`);
-    
-    // Ensure Python script exists
-    if (!this.useFallback && !fs.existsSync(this.pythonScriptPath)) {
-      console.warn(`[DeepFaceService] Python script not found at: ${this.pythonScriptPath}`);
+    // Verify Python script exists
+    if (!fs.existsSync(this.pythonScriptPath)) {
+      console.warn(`Simple face processor Python script not found at: ${this.pythonScriptPath}`);
       this.useFallback = true;
-    }
-    
-    // Immediately check Python environment instead of async
-    this.initializePythonEnvironment();
-  }
-
-  /**
-   * Initialize Python environment and check if it's ready
-   */
-  private initializePythonEnvironment(): void {
-    try {
-      // Check if Python executable exists
-      if (!fs.existsSync(this.pythonExecutable)) {
-        console.warn(`[DeepFaceService] Python executable not found at: ${this.pythonExecutable}`);
-        this.useFallback = true;
-        return;
-      }
-
-      // Try running a simple Python command synchronously
-      const { execSync } = require('child_process');
-      try {
-        const pythonVersion = execSync(`"${this.pythonExecutable}" --version`, { encoding: 'utf8' });
-        console.log(`[DeepFaceService] Python version: ${pythonVersion.trim()}`);
-      } catch (error) {
-        console.warn(`[DeepFaceService] Failed to run Python: ${error}`);
-        this.useFallback = true;
-        return;
-      }
-      
-      // If we have a script, check if deepface is available
-      if (this.pythonScriptPath) {
-        try {
-          const scriptDir = path.dirname(this.pythonScriptPath);
-          const checkDeepface = execSync(
-            `"${this.pythonExecutable}" -c "import deepface; print('DeepFace available')"`, 
-            { encoding: 'utf8' }
-          );
-          console.log(`[DeepFaceService] DeepFace check: ${checkDeepface.trim()}`);
-        } catch (error) {
-          console.warn(`[DeepFaceService] DeepFace not available: ${error}`);
-          this.useFallback = true;
-        }
-      }
-    } catch (error) {
-      console.error(`[DeepFaceService] Error initializing Python environment: ${error}`);
-      this.useFallback = true;
+    } else {
+      console.log(`Using Python script: ${this.pythonScriptPath}`);
     }
   }
 
@@ -259,14 +201,14 @@ class DeepFaceService {
    */
   private async executePythonScript(args: string[]): Promise<DeepFaceResponse> {
     if (this.useFallback) {
-      console.log('[DeepFaceService] Using fallback mock implementation');
+      console.log('Using fallback mock implementation');
       return this.getMockResponse(args);
     }
 
     try {
-      console.log(`[DeepFaceService] Executing Python script: ${this.pythonScriptPath}`);
-      console.log(`[DeepFaceService] With args: ${JSON.stringify(args)}`);
+      // console.log(`[DeepFaceService] Executing Python script with args: ${JSON.stringify(args)}`);
       console.log(`[DeepFaceService] Python executable: ${this.pythonExecutable}`);
+      console.log(`[DeepFaceService] Python script path: ${this.pythonScriptPath}`);
       
       // For long arguments (like file paths), use a temporary JSON file instead
       const useArgsFile = args.some(arg => arg && arg.length > 100);
@@ -287,55 +229,12 @@ class DeepFaceService {
       const options = {
         mode: 'text' as const,
         pythonPath: this.pythonExecutable,
-        pythonOptions: ['-u'], // Unbuffered output
+        pythonOptions: ['-u'],
         scriptPath: path.dirname(this.pythonScriptPath),
         args
       };
 
       console.log(`[DeepFaceService] Python options: ${JSON.stringify(options)}`);
-
-      // Try running with child_process first for better error reporting
-      try {
-        const { execFileSync } = require('child_process');
-        const scriptName = path.basename(this.pythonScriptPath);
-        const scriptDir = path.dirname(this.pythonScriptPath);
-        
-        console.log(`[DeepFaceService] Running direct command: ${this.pythonExecutable} ${scriptName} ${args.join(' ')}`);
-        
-        // Change to script directory
-        const cwd = process.cwd();
-        process.chdir(scriptDir);
-        
-        try {
-          const result = execFileSync(
-            this.pythonExecutable,
-            [scriptName, ...args],
-            { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
-          );
-          
-          console.log(`[DeepFaceService] Direct execution result: ${result.substring(0, 200)}...`);
-          
-          // Change back to original directory
-          process.chdir(cwd);
-          
-          // Parse the JSON result
-          try {
-            const lines = result.trim().split('\n');
-            const lastLine = lines[lines.length - 1];
-            return JSON.parse(lastLine);
-          } catch (parseError) {
-            console.error(`[DeepFaceService] Failed to parse Python output: ${parseError}`);
-            throw parseError;
-          }
-        } catch (execError) {
-          console.error(`[DeepFaceService] Direct execution failed: ${execError}`);
-          // Continue with PythonShell as fallback
-          process.chdir(cwd);
-        }
-      } catch (directError) {
-        console.error(`[DeepFaceService] Error in direct execution attempt: ${directError}`);
-        // Continue with PythonShell
-      }
 
       // Add timeout to prevent hanging
       const timeoutMs = 30000; // 30 seconds timeout
@@ -357,17 +256,18 @@ class DeepFaceService {
         }
       }
       
-      console.log(`[DeepFaceService] Python script raw output: ${JSON.stringify(results)}`);
+      // console.log(`[DeepFaceService] Python script raw output: ${JSON.stringify(results)}`);
       
       if (!results || results.length === 0) {
         throw new Error('No output from Python script');
       }
 
       const lastResult = results[results.length - 1]; // Get the last line which should contain JSON
-      console.log(`[DeepFaceService] Parsing result: ${lastResult}`);
+      // console.log(`[DeepFaceService] Parsing result: ${lastResult}`);
       
       const parsed = JSON.parse(lastResult);
       
+      // console.log(`[DeepFaceService] Python script parsed result: ${JSON.stringify(parsed)}`);
       return parsed;
     } catch (err: any) {
       console.error('[DeepFaceService] Python script error:', err);
@@ -492,55 +392,53 @@ class DeepFaceService {
   }
 
   /**
-   * Process embeddings with enhanced filtering and quality checks
+   * Process raw embeddings from Python script with improved quality filtering
    */
   private processEnhancedEmbeddings(rawEmbeddings: any[]): any[] {
+    // console.log(`[DeepFaceService] Processing ${rawEmbeddings.length} raw embeddings`);
+    
     if (!rawEmbeddings || rawEmbeddings.length === 0) {
-      console.log(`[DeepFaceService] No embeddings to process`);
+      // console.log('[DeepFaceService] No embeddings to process');
       return [];
     }
     
-    console.log(`[DeepFaceService] Processing ${rawEmbeddings.length} embeddings`);
+    // Cao hơn – loại bớt false positives
+    const qualityThreshold = 0.15; // Trước 0.05 -> quá thấp
     
-    // Higher quality threshold to filter out low-quality faces
-    const qualityThreshold = 0.15; // Increased from 0.05
-    
-    // Filter embeddings by quality and informativeness
     const processedEmbeddings = rawEmbeddings.filter((embedding, index) => {
       // Extract quality metrics
       const embeddingQuality = embedding.embedding_quality || 0;
       const overallScore = embedding.overall || 0;
       const qualityScore = embedding.quality || 0;
       
-      // Check if embedding vector is informative
-      const isInformative = this.isInformativeEmbedding(embedding.embedding || []);
-      
-      // Log quality metrics
-      console.log(`[DeepFaceService] Embedding #${index}: quality=${qualityScore.toFixed(2)}, embedding_quality=${embeddingQuality.toFixed(2)}, overall=${overallScore.toFixed(2)}, informative=${isInformative}`);
-      
-      // Combined quality check
+      // More permissive filtering - accept if ANY quality metric is acceptable
       const passesQualityCheck = 
-        qualityScore >= qualityThreshold && 
-        embeddingQuality >= 0.5 && 
-        isInformative;
+        embeddingQuality > qualityThreshold || 
+        overallScore > qualityThreshold || 
+        qualityScore > qualityThreshold;
       
       if (!passesQualityCheck) {
-        console.log(`[DeepFaceService] Embedding #${index} filtered out: low quality or not informative`);
+        console.log(`[DeepFaceService] Filtered out face ${index}: embedding_quality=${embeddingQuality.toFixed(3)}, overall=${overallScore.toFixed(3)}, quality=${qualityScore.toFixed(3)}`);
       }
       
       return passesQualityCheck;
     });
     
-    console.log(`[DeepFaceService] ${processedEmbeddings.length}/${rawEmbeddings.length} embeddings passed quality filtering`);
-    
-    // If all embeddings filtered out, return empty array instead of trying to use low quality ones
-    if (processedEmbeddings.length === 0) {
-      console.log(`[DeepFaceService] All embeddings filtered out, returning empty array`);
-      return [];
+    // If all embeddings were filtered out but we had raw embeddings, return the best one
+    if (processedEmbeddings.length === 0 && rawEmbeddings.length > 0) {
+      console.log('[DeepFaceService] All embeddings filtered out, returning best raw embedding');
+      // Find the embedding with highest overall score
+      const bestEmbedding = rawEmbeddings.reduce((best, current) => {
+        const currentScore = (current.embedding_quality || 0) + (current.overall || 0) + (current.quality || 0);
+        const bestScore = (best.embedding_quality || 0) + (best.overall || 0) + (best.quality || 0);
+        return currentScore > bestScore ? current : best;
+      }, rawEmbeddings[0]);
+      
+      return [bestEmbedding];
     }
     
-    // If we have multiple embeddings, cluster them and keep only the largest cluster
-    if (processedEmbeddings.length > 1) {
+    // Nếu vẫn còn quá nhiều khuôn mặt, gom cụm và chỉ giữ cụm lớn nhất
+    if (processedEmbeddings.length > 3) {
       const cosine = (a: number[], b: number[]): number => {
         let dot = 0, na = 0, nb = 0;
         for (let i = 0; i < Math.min(a.length, b.length); i++) {
@@ -548,76 +446,32 @@ class DeepFaceService {
           na += a[i] * a[i];
           nb += b[i] * b[i];
         }
-        if (na === 0 || nb === 0) return 0;
-        return dot / (Math.sqrt(na) * Math.sqrt(nb));
+        if (!na || !nb) return 0;
+        return (dot / (Math.sqrt(na) * Math.sqrt(nb)) + 1) / 2;
       };
-      
-      // Cluster embeddings by similarity
+
       const clusters: any[][] = [];
-      const similarityThreshold = 0.8;
-      
-      for (const embedding of processedEmbeddings) {
-        let foundCluster = false;
-        
-        for (const cluster of clusters) {
-          // Check if embedding is similar to any embedding in this cluster
-          const isSimilar = cluster.some(clusterEmbed => {
-            const similarity = cosine(embedding.embedding, clusterEmbed.embedding);
-            return similarity > similarityThreshold;
-          });
-          
-          if (isSimilar) {
-            cluster.push(embedding);
-            foundCluster = true;
-            break;
+
+      outer: for (const emb of processedEmbeddings) {
+        const vec: number[] = emb.embedding || emb.embedding_vector || [];
+        if (!Array.isArray(vec) || !vec.length) continue;
+        for (const cl of clusters) {
+          const ref = cl[0].embedding || cl[0].embedding_vector || [];
+          if (cosine(vec, ref) > 0.8) {
+            cl.push(emb);
+            continue outer;
           }
         }
-        
-        if (!foundCluster) {
-          // Create new cluster
-          clusters.push([embedding]);
-        }
+        clusters.push([emb]);
       }
-      
-      // Sort clusters by size (largest first)
+
       clusters.sort((a, b) => b.length - a.length);
-      
-      console.log(`[DeepFaceService] Created ${clusters.length} clusters. Sizes: ${clusters.map(c => c.length).join(', ')}`);
-      
-      if (clusters.length > 0) {
-        const dominant = clusters[0];
-        
-        // Filter dominant cluster by size and position
-        if (dominant.length > 1) {
-          // Calculate areas of bounding boxes
-          const areas = dominant.map(e => {
-            const r = e.region || {};
-            return (r.w || 0) * (r.h || 0);
-          });
-          const maxArea = Math.max(...areas, 0);
-          
-          // Filter by size - keep faces at least 40% of the largest face
-          const sizeFiltered = dominant.filter((e, idx) => areas[idx] >= maxArea * 0.4);
-          
-          console.log(`[DeepFaceService] After size filter: ${sizeFiltered.length}/${dominant.length}`);
-          
-          // Sort by area (largest first) and keep only the largest face
-          sizeFiltered.sort((a, b) => {
-            const ra = a.region || {} as any;
-            const rb = b.region || {} as any;
-            const areaA = (ra.w || 0) * (ra.h || 0);
-            const areaB = (rb.w || 0) * (rb.h || 0);
-            return areaB - areaA;
-          });
-          
-          console.log(`[DeepFaceService] After size filter: ${sizeFiltered.length}/${dominant.length} -> keeping best 1`);
-          return [sizeFiltered[0]];
-        }
-        
-        return dominant;
-      }
+      const dominant = clusters[0];
+      console.log(`[DeepFaceService] Dominant cluster size ${dominant.length}/${processedEmbeddings.length}`);
+      return dominant;
     }
-    
+
+    console.log(`[DeepFaceService] ${processedEmbeddings.length} embeddings passed quality filtering`);
     return processedEmbeddings;
   }
 
@@ -661,94 +515,46 @@ class DeepFaceService {
   }
 
   /**
-   * Check if embedding vector contains useful information
-   */
-  private isInformativeEmbedding(vec: number[]): boolean {
-    if (!vec || vec.length === 0) return false;
-    
-    // Calculate basic statistics
-    const mean = vec.reduce((a, b) => a + b, 0) / vec.length;
-    const variance = vec.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / vec.length;
-    
-    // Check if variance is too low (near-constant vector)
-    if (variance < 1e-3) {
-      console.log(`[DeepFaceService] Non-informative embedding detected: variance=${variance}`);
-      return false;
-    }
-    
-    // Check for NaN or Infinity values
-    const hasInvalidValues = vec.some(v => isNaN(v) || !isFinite(v));
-    if (hasInvalidValues) {
-      console.log(`[DeepFaceService] Invalid values in embedding`);
-      return false;
-    }
-    
-    return true;
-  }
-
-  /**
    * Compare two face embeddings with advanced multi-metric analysis
    */
   async compareFaces(
     sourceEmbedding: number[],
     targetEmbedding: number[]
   ): Promise<{ similarity: number; confidence: number; distance: number }> {
-    console.log(`[DeepFace Compare] Comparing face embeddings`);
-    
-    // Validate embeddings
-    if (!this.isInformativeEmbedding(sourceEmbedding) || !this.isInformativeEmbedding(targetEmbedding)) {
-      console.log(`[DeepFace Compare] One or both embeddings are not informative, returning zero similarity`);
-      return { similarity: 0, confidence: 0, distance: 1 };
-    }
-    
     try {
-      // Always calculate fallback similarity for validation
-      const fallbackResult = this.compareFacesFallback(sourceEmbedding, targetEmbedding);
-      console.log(`[DeepFace Compare] Fallback similarity: ${fallbackResult.similarity.toFixed(3)}`);
-      
-      // If we're using fallback mode or Python is not available, return fallback result
-      if (this.useFallback) {
-        return fallbackResult;
+      if (!sourceEmbedding || !targetEmbedding || sourceEmbedding.length === 0 || targetEmbedding.length === 0) {
+        return { similarity: 0, confidence: 0, distance: 1.0 };
       }
-      
-      // Try Python comparison with cross-validation
-      try {
-        const pythonComparison = await this.compareFacesViaPython(sourceEmbedding, targetEmbedding);
-        
-        if (pythonComparison.success) {
-          console.log(`[DeepFace Compare] Python comparison successful - Similarity: ${pythonComparison.similarity.toFixed(3)}, Confidence: ${pythonComparison.confidence.toFixed(3)}`);
-          
-          // Log cross-validation results if available
-          if (pythonComparison.cross_validation) {
-            console.log(`[DeepFace Compare] Cross-validation: ${pythonComparison.cross_validation.is_consistent ? 'PASSED' : 'FAILED'} - ${pythonComparison.cross_validation.reason}`);
-          }
-          
-          // Sanity check: if Python result is significantly different from fallback,
-          // something might be wrong with the Python result
-          const similarityDifference = Math.abs(pythonComparison.similarity - fallbackResult.similarity);
-          
-          if (similarityDifference > 0.15) {
-            console.log(`[DeepFace Compare] WARNING: Large discrepancy between Python (${pythonComparison.similarity.toFixed(3)}) and fallback (${fallbackResult.similarity.toFixed(3)}) similarity. Using fallback.`);
-            return fallbackResult;
-          }
-          
-          // Use Python result if it passed cross-validation and sanity check
+
+      // 1) So sánh bằng Python
+      const pythonComparison = await this.compareFacesViaPython(sourceEmbedding, targetEmbedding);
+
+      // 2) Luôn tính thêm version fallback để đối chiếu (chi phí thấp)
+      const tsFallback = this.compareFacesFallback(sourceEmbedding, targetEmbedding);
+
+      // 3) Nếu Python thành công và đồng nhất (±0.15) với fallback => tin cậy
+      if (pythonComparison.success) {
+        const delta = Math.abs(pythonComparison.similarity - tsFallback.similarity);
+        if (delta < 0.15) {
+          console.log(`[DeepFace Compare] Python OK (∆=${delta.toFixed(3)}). Use Python result.`);
           return {
             similarity: pythonComparison.similarity,
             confidence: pythonComparison.confidence,
             distance: pythonComparison.distance
           };
         } else {
-          console.log(`[DeepFace Compare] Python comparison failed: ${pythonComparison.error || 'Unknown error'}. Using fallback.`);
-          return fallbackResult;
+          console.warn(`[DeepFace Compare] ⚠️  Python result (${pythonComparison.similarity.toFixed(3)}) diverges from TS fallback (${tsFallback.similarity.toFixed(3)}). Using fallback to avoid false-positive.`);
         }
-      } catch (pythonError) {
-        console.error(`[DeepFace Compare] Error in Python comparison:`, pythonError);
-        return fallbackResult;
+      } else {
+        console.log(`[DeepFace Compare] Python comparison failed – fallback only.`);
       }
+
+      // 4) Mặc định trả về fallback an toàn hơn
+      return tsFallback;
+      
     } catch (error) {
-      console.error(`[DeepFace Compare] Error comparing faces:`, error);
-      return { similarity: 0, confidence: 0, distance: 1 };
+      console.error('Error comparing face embeddings:', error);
+      return this.compareFacesFallback(sourceEmbedding, targetEmbedding);
     }
   }
 
@@ -758,7 +564,7 @@ class DeepFaceService {
   private async compareFacesViaPython(
     embedding1: number[],
     embedding2: number[]
-  ): Promise<{ success: boolean; similarity: number; confidence: number; distance: number; error?: string; cross_validation?: any; adaptive_adjustments?: any }> {
+  ): Promise<{ success: boolean; similarity: number; confidence: number; distance: number; cross_validation?: any; adaptive_adjustments?: any }> {
     try {
       const args = [
         'compare_embeddings',
@@ -794,21 +600,11 @@ class DeepFaceService {
     sourceEmbedding: number[],
     targetEmbedding: number[]
   ): { similarity: number; confidence: number; distance: number } {
-    // If either vector not informative => return low similarity
-    if (!this.isInformativeEmbedding(sourceEmbedding) || !this.isInformativeEmbedding(targetEmbedding)) {
-      return { similarity: 0, confidence: 0, distance: 1 };
-    }
     // Multiple similarity metrics for robust comparison
     const cosineSim = this.calculateCosineSimilarity(sourceEmbedding, targetEmbedding);
     const euclideanSim = this.calculateEuclideanSimilarity(sourceEmbedding, targetEmbedding);
     const pearsonSim = this.calculatePearsonCorrelation(sourceEmbedding, targetEmbedding);
     
-    // If all metrics extremely high but vectors nearly identical (possible placeholder) check mean abs diff
-    const meanAbsDiff = sourceEmbedding.reduce((sum, v, i) => sum + Math.abs(v - targetEmbedding[i]), 0) / sourceEmbedding.length;
-    if (meanAbsDiff < 1e-3) {
-      return { similarity: 0, confidence: 0, distance: 1 };
-    }
-
     // Weighted ensemble similarity
     const ensembleSimilarity = (cosineSim * 0.6) + (euclideanSim * 0.25) + (pearsonSim * 0.15);
     
