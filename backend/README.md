@@ -1,78 +1,96 @@
-# Smart Photo Manager Backend
+# Backend - Smart Photo Manager
 
-This is the backend API for the Smart Photo Manager application. It provides endpoints for user authentication, image management, Google Drive integration, and chatbot functionality.
+## Mô tả chức năng
 
-## Setup
+Backend cung cấp API RESTful để xử lý toàn bộ logic nghiệp vụ của hệ thống quản lý ảnh thông minh. Hệ thống tích hợp AI để phân tích khuôn mặt, so sánh ảnh và tự động chọn ảnh đẹp nhất.
 
-1. Install dependencies:
+## Các chức năng chính
+
+### 🔐 Xác thực và phân quyền (Auth)
+- **Đăng nhập/đăng ký** người dùng với JWT tokens
+- **Phân quyền** admin/user với middleware authentication
+- **Quản lý users** (CRUD operations cho admin)
+- **Middleware bảo mật** với error handling và rate limiting
+
+### 📸 Xử lý ảnh (Images)  
+- **Upload ảnh** đa định dạng với multer
+- **Lưu trữ metadata** ảnh trong MongoDB
+- **Tích hợp DeepFace** để phân tích khuôn mặt
+- **So sánh embeddings** để tìm ảnh tương tự
+- **Đánh giá chất lượng** ảnh tự động
+
+### 🔗 Tích hợp Google Drive
+- **OAuth2 authentication** với Google Drive API  
+- **Quét thư mục** tự động để tìm ảnh mới
+- **Download/upload** ảnh từ/lên Drive
+- **Tạo thư mục** và sao chép ảnh tự động
+- **Thiết lập quyền public** cho thư mục kết quả
+
+### 🤖 Chatbot AI
+- **Webhook handlers** cho Zalo và Facebook Messenger
+- **Xử lý tin nhắn** và phân tích intent
+- **Workflow tự động** để xử lý ảnh khách hàng:
+  - Nhận ảnh từ chatbot
+  - So sánh với thư mục Drive của admin
+  - Tìm ảnh matching và chọn ảnh đẹp nhất  
+  - Tạo thư mục kết quả và chia sẻ link
+- **Thống kê hệ thống** và trạng thái processing
+
+### ⚙️ Tích hợp N8N Workflows
+- **REST API calls** đến N8N workflows
+- **Trigger workflows** cho:
+  - Google Drive scanning
+  - DeepFace processing 
+  - Image comparison và selection
+  - Chatbot notifications
+- **Workflow orchestration** để xử lý các tác vụ phức tạp
+
+## Công nghệ sử dụng
+
+- **Node.js + Express.js** - Web framework
+- **TypeScript** - Type safety
+- **MongoDB + Mongoose** - Database và ODM
+- **JWT** - Authentication
+- **Multer** - File upload handling  
+- **Axios** - HTTP client cho external APIs
+- **Python scripts** - DeepFace integration
+- **Google Drive API** - Cloud storage integration
+
+## Cấu trúc thư mục
+
 ```
-npm install
+src/
+├── config/         # Database và cấu hình hệ thống
+├── controllers/    # Business logic và API handlers  
+├── middleware/     # Authentication, error handling
+├── models/         # MongoDB schemas và models
+├── routes/         # API routing definitions
+├── services/       # External integrations (Google Drive, N8N, DeepFace)
+└── index.ts        # Entry point và server setup
 ```
 
-2. Create a `.env` file in the backend directory with the following content:
-```
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/smart-photo-management
-JWT_SECRET=your_jwt_secret_here
-N8N_BASE_URL=http://localhost:5678
-N8N_API_KEY=your_n8n_api_key_here
+## API Endpoints chính
 
-# Google Drive API credentials
-GOOGLE_DRIVE_CLIENT_ID=your_google_client_id_here
-GOOGLE_DRIVE_CLIENT_SECRET=your_google_client_secret_here
+- **Auth**: `/api/auth/*` - Authentication và user management
+- **Images**: `/api/images/*` - Image upload và processing
+- **Drive**: `/api/drive/*` - Google Drive integration
+- **Chatbot**: `/api/chatbot/*` - Chatbot webhooks và messaging
+- **Workflows**: `/api/workflows/*` - N8N workflow management
+- **System**: `/api/system/*` - System statistics và health checks
 
-# Upload directory
-UPLOAD_DIR=uploads
+## Workflow xử lý ảnh
 
-# Gemini / Google AI
-GOOGLE_GENAI_API_KEY=your_gemini_api_key_here
-# Optional: specify model (default gemini-1.5-pro)
-GEMINI_MODEL_ID=gemini-1.5-pro
-
-# DeepFace Local Configuration (No external API required)
-DEEPFACE_PYTHON_PATH=python
-DEEPFACE_MODEL=VGG-Face
-DEEPFACE_DETECTOR=opencv
-DEEPFACE_METRIC=cosine
-DEEPFACE_QUALITY_THRESHOLD=80
-DEEPFACE_SIMILARITY_THRESHOLD=0.6
-```
-
-3. Set up Google Drive API:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project
-   - Enable the Google Drive API
-   - Create OAuth 2.0 credentials (Web application type)
-   - Add http://localhost:5000/api/drive/oauth2callback to authorized redirect URIs
-   - Copy the Client ID and Client Secret to your .env file
-
-4. Start the development server:
-```
-npm run dev
-```
-
-## API Routes
-
-- **Auth**: `/api/auth/*`
-- **Images**: `/api/images/*`
-- **Drive**: `/api/drive/*`
-- **Chatbot**: `/api/chatbot/*`
-- **Workflows**: `/api/workflows/*`
-- **System**: `/api/system/*`
+1. **Upload ảnh** khách hàng qua chatbot hoặc web interface
+2. **Extract embeddings** từ ảnh khách hàng bằng DeepFace
+3. **Quét Google Drive** của admin để lấy tất cả ảnh
+4. **So sánh embeddings** để tìm ảnh matching
+5. **Đánh giá chất lượng** và tính điểm tổng hợp
+6. **Chọn ảnh đẹp nhất** dựa trên similarity + quality scores
+7. **Tạo thư mục kết quả** trên Google Drive
+8. **Sao chép ảnh** được chọn vào thư mục mới
+9. **Thiết lập public permission** và trả về link chia sẻ
 
 ## Default Accounts
 
-On first startup, the system creates the following default accounts:
-
 - Admin: `admin@example.com` / `admin123`
-- User: `user@example.com` / `user123`
-
-## Google Drive Integration
-
-The application supports Google Drive integration to scan and process photos from Google Drive folders. To set this up:
-
-1. Create Google Cloud Project and obtain OAuth 2.0 credentials as described above
-2. Add the credentials to your .env file
-3. In the application UI, go to System Configuration to enter your credentials
-4. Click "Authorize Drive" to connect your Google Drive account
-5. Use the Drive Explorer to browse and select folders for scanning 
+- User: `user@example.com` / `user123` 
